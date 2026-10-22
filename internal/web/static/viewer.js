@@ -1,5 +1,6 @@
-// viewer.js — дорожки сигналов: общая ось времени, курсоры A/B, Δt, синхронный зум.
-// Сейчас его использует страница «История»; позже на него переедет и Live.
+// viewer.js — дорожки сигналов: общая ось времени, курсоры A/B, Δt, синхронный зум,
+// перестановка дорожек. Сейчас его использует страница «История»; позже на него переедет и Live.
+// Подключать ПОСЛЕ isa101.js, uPlot и lanes.js.
 
 function nearestIdx(xd, t) {
   if (xd.length === 0) return -1;
@@ -15,7 +16,7 @@ function nearestIdx(xd, t) {
 function fmtTime(sec) {
   const d = new Date(sec * 1000);
   return d.toLocaleTimeString("ru-RU", { hour12: false }) + "." +
-         String(d.getMilliseconds()).padStart(3, "0");
+    String(d.getMilliseconds()).padStart(3, "0");
 }
 
 function fmtPeriod(ms) {
@@ -30,6 +31,7 @@ function fmtVal(v) {
 //   cfg.lanesEl, cfg.hoverEl, cfg.cursorsEl, cfg.cursorTextEl, cfg.clearBtn — элементы страницы
 //   cfg.onZoom(min, max) — выделили участок (секунды)
 //   cfg.onChange()       — сменились курсоры или видимый участок
+//   cfg.orderKey         — под каким именем запоминать порядок дорожек (например, номер ПЛК)
 function createViewer(cfg) {
   const LANE_H = 80, NAME_W = 130, VAL_W = 110;
   const COLOR_A = ISA.cursorA, COLOR_B = ISA.cursorB;
@@ -39,6 +41,8 @@ function createViewer(cfg) {
   const changed = () => { if (cfg.onChange) cfg.onChange(); };
 
   let lanes = [];
+  let axisU = null; // строка с осью времени под дорожками
+  let order = null; // перестановка дорожек
   let curA = null, curB = null;
   let justZoomed = false;
 
@@ -125,17 +129,24 @@ function createViewer(cfg) {
 
   function setRange(min, max) {
     lanes.forEach(l => l.u.setScale("x", { min, max }));
+    if (axisU) axisU.setScale("x", { min, max });
     changed();
   }
 
   function build(defs) {
     cfg.lanesEl.textContent = "";
+    if (axisU) { // пересборка: убираем старую ось
+      axisU.root.parentElement.remove();
+      axisU.destroy();
+      axisU = null;
+    }
     lanes = defs.map((d, i) => {
-      const row    = document.createElement("div");
+      const row = document.createElement("div");
       const nameEl = document.createElement("div");
       const plotEl = document.createElement("div");
-      const valEl  = document.createElement("div");
+      const valEl = document.createElement("div");
       row.className = "lane";
+      row.dataset.name = d.name; // по имени запоминается порядок дорожек
       nameEl.className = "name";
       valEl.className = "val";
 
@@ -151,10 +162,9 @@ function createViewer(cfg) {
       row.append(nameEl, plotEl, valEl);
       cfg.lanesEl.appendChild(row);
 
-      const isLast = i === defs.length - 1;
       const u = new uPlot({
-        width:  plotWidth(),
-        height: LANE_H + (isLast ? 30 : 0),
+        width: plotWidth(),
+        height: LANE_H,
         legend: { show: false },
         cursor: {
           sync: { key: sync.key },
@@ -181,7 +191,7 @@ function createViewer(cfg) {
             if (cfg.onZoom) cfg.onZoom(min, max);
           }],
         },
-        axes: isaAxes(isLast),
+        axes: isaAxes(false), // подписи времени — в отдельной строке под дорожками
         series: [{}, { stroke: colors[i % colors.length], width: 1 }],
       }, [[], []], plotEl);
 
@@ -194,15 +204,25 @@ function createViewer(cfg) {
         setCursor("B", u, e.offsetX);
       });
 
-      return { u, valEl, name: d.name, sub: subText };
+      return { u, row, valEl, name: d.name, sub: subText };
     });
+
+    if (lanes.length) {
+      axisU = makeTimeAxis(cfg.lanesEl, plotWidth());
+      order = makeSortable(cfg.lanesEl, cfg.orderKey || "default");
+    }
+  }
+
+  // Дорожки в том порядке, в каком они сейчас на экране (после перестановки)
+  function visualLanes() {
+    return [...cfg.lanesEl.children]
+      .map(r => lanes.find(l => l.row === r))
+      .filter(Boolean);
   }
 
   window.addEventListener("resize", () => {
-    lanes.forEach((l, i) => l.u.setSize({
-      width: plotWidth(),
-      height: LANE_H + (i === lanes.length - 1 ? 30 : 0),
-    }));
+    lanes.forEach(l => l.u.setSize({ width: plotWidth(), height: LANE_H }));
+    if (axisU) axisU.setSize({ width: plotWidth(), height: 34 });
   });
   document.addEventListener("keydown", e => { if (e.key === "Escape") clearCursors(); });
   if (cfg.clearBtn) cfg.clearBtn.onclick = clearCursors;
@@ -213,7 +233,9 @@ function createViewer(cfg) {
     setSeries: (i, xs, ys) => lanes[i].u.setData([xs, ys], false),
     updateCursors,
     clearCursors,
-    getLanes: () => lanes,
+    getLanes: visualLanes,
+    getAxis: () => axisU,
+    resetOrder: () => { if (order) order.reset(); },
     getCursors: () => ({ a: curA, b: curB }),
     getRange: () => lanes.length
       ? { min: lanes[0].u.scales.x.min, max: lanes[0].u.scales.x.max }

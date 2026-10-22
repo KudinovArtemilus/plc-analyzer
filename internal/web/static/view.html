@@ -1,237 +1,252 @@
 <!doctype html>
 <html lang="ru">
+
 <head>
-<meta charset="utf-8">
-<title>История — PLC Analyzer</title>
-<link rel="stylesheet" href="uPlot.min.css">
-<link rel="stylesheet" href="/isa101.css">
+  <meta charset="utf-8">
+  <title>История — PLC Analyzer</title>
+  <link rel="stylesheet" href="uPlot.min.css">
+  <link rel="stylesheet" href="/isa101.css">
 </head>
+
 <body>
-<nav><a href="/" id="lnkLive">← Графики</a> <a href="/history" id="lnkHistory">← К списку файлов</a> <a href="/snapshots" id="lnkSnaps">Слепки</a></nav>
-<h3 id="title">История</h3>
+  <nav><a href="/" id="lnkLive">← Графики</a> <a href="/history" id="lnkHistory">← К списку файлов</a> <a
+      href="/snapshots" id="lnkSnaps">Слепки</a></nav>
+  <h3 id="title">История</h3>
 
-<div id="toolbar">
-  <button id="btnReset">⤢ Вся запись</button>
-  <span id="export">
-    <span id="exportInfo">Выгрузка: —</span>
-    <button id="btnPng">🖼 Картинка</button>
-    <button id="btnCsv">📄 CSV</button>
-  </span>
-  <span id="hint">выделение — зум (подгрузит подробнее) · ЛКМ — курсор A · ПКМ — курсор B · Esc — убрать курсоры</span>
-</div>
-<div id="statusRow">
-  <span id="status">загрузка…</span>
-  <span id="hoverTime"></span>
-</div>
-<div id="cursors" hidden>
-  <span id="cursorText"></span>
-  <button id="btnClearCur">✕ убрать курсоры</button>
-</div>
-<div id="lanes"></div>
+  <div id="toolbar">
+    <button id="btnReset">⤢ Вся запись</button>
+    <button id="btnOrder" title="вернуть дорожки в исходный порядок">↺ исходный порядок</button>
+    <span id="export">
+      <span id="exportInfo">Выгрузка: —</span>
+      <button id="btnPng">🖼 Картинка</button>
+      <button id="btnCsv">📄 CSV</button>
+    </span>
+    <span id="hint">выделение — зум (подгрузит подробнее) · ЛКМ — курсор A · ПКМ — курсор B · Esc — убрать курсоры · ⠿
+      или ▲▼ у имени — порядок дорожек</span>
+  </div>
+  <div id="statusRow">
+    <span id="status">загрузка…</span>
+    <span id="hoverTime"></span>
+  </div>
+  <div id="cursors" hidden>
+    <span id="cursorText"></span>
+    <button id="btnClearCur">✕ убрать курсоры</button>
+  </div>
+  <div id="lanes"></div>
 
-<script src="uPlot.iife.min.js"></script>
-<script src="isa101.js"></script>
-<script src="viewer.js"></script>
-<script>
-const params   = new URLSearchParams(location.search);
-const plc      = params.get("plc") || "";
-const plcQ     = plc ? "?plc=" + encodeURIComponent(plc) : "";
-const file     = params.get("file");
-const names    = params.getAll("s");
-const statusEl = document.getElementById("status");
+  <script src="uPlot.iife.min.js"></script>
+  <script src="isa101.js"></script>
+  <script src="lanes.js"></script>
+  <script src="viewer.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const plc = params.get("plc") || "";
+    const plcQ = plc ? "?plc=" + encodeURIComponent(plc) : "";
+    const file = params.get("file");
+    const names = params.getAll("s");
+    const statusEl = document.getElementById("status");
 
-// Ссылки меню ведут к тому же ПЛК
-document.getElementById("lnkLive").href    = "/" + plcQ;
-document.getElementById("lnkHistory").href = "/history" + plcQ;
-document.getElementById("lnkSnaps").href   = "/snapshots" + plcQ;
+    // Ссылки меню ведут к тому же ПЛК
+    document.getElementById("lnkLive").href = "/" + plcQ;
+    document.getElementById("lnkHistory").href = "/history" + plcQ;
+    document.getElementById("lnkSnaps").href = "/snapshots" + plcQ;
 
-let full  = null;
-let reqNo = 0;
-let meta  = null;
+    let full = null;
+    let reqNo = 0;
+    let meta = null;
 
-function setStatus(text, warn) {
-  statusEl.textContent = text;
-  statusEl.classList.toggle("warn", !!warn);
-}
+    function setStatus(text, warn) {
+      statusEl.textContent = text;
+      statusEl.classList.toggle("warn", !!warn);
+    }
 
-const viewer = createViewer({
-  lanesEl:      document.getElementById("lanes"),
-  hoverEl:      document.getElementById("hoverTime"),
-  cursorsEl:    document.getElementById("cursors"),
-  cursorTextEl: document.getElementById("cursorText"),
-  clearBtn:     document.getElementById("btnClearCur"),
-  onZoom:       (min, max) => load(min, max),
-  onChange:     updateExportInfo,
-});
+    const viewer = createViewer({
+      lanesEl: document.getElementById("lanes"),
+      hoverEl: document.getElementById("hoverTime"),
+      cursorsEl: document.getElementById("cursors"),
+      cursorTextEl: document.getElementById("cursorText"),
+      clearBtn: document.getElementById("btnClearCur"),
+      onZoom: (min, max) => load(min, max),
+      onChange: updateExportInfo,
+      orderKey: plc || "default", // тот же порядок дорожек, что на Live этого ПЛК
+    });
 
-// Параметры запроса к серверу: ПЛК, файл, сигналы и дополнительные поля
-function query(extra) {
-  const q = new URLSearchParams({ file, ...extra });
-  if (plc) q.set("plc", plc);
-  names.forEach(n => q.append("s", n));
-  return q;
-}
+    // Параметры запроса к серверу: ПЛК, файл, сигналы и дополнительные поля
+    function query(extra) {
+      const q = new URLSearchParams({ file, ...extra });
+      if (plc) q.set("plc", plc);
+      names.forEach(n => q.append("s", n));
+      return q;
+    }
 
-// ---------- Что выгружаем: A–B или видимый участок ----------
+    // ---------- Что выгружаем: A–B или видимый участок ----------
 
-function exportRange() {
-  const c = viewer.getCursors();
-  if (c.a != null && c.b != null && c.a !== c.b) {
-    return { from: Math.min(c.a, c.b), to: Math.max(c.a, c.b), label: "A–B" };
-  }
-  const r = viewer.getRange();
-  return r ? { from: r.min, to: r.max, label: "видимый участок" } : null;
-}
+    function exportRange() {
+      const c = viewer.getCursors();
+      if (c.a != null && c.b != null && c.a !== c.b) {
+        return { from: Math.min(c.a, c.b), to: Math.max(c.a, c.b), label: "A–B" };
+      }
+      const r = viewer.getRange();
+      return r ? { from: r.min, to: r.max, label: "видимый участок" } : null;
+    }
 
-function fmtDur(sec) {
-  if (sec < 60) return sec.toFixed(3).replace(".", ",") + " с";
-  const m = Math.floor(sec / 60), s = Math.round(sec % 60);
-  return m >= 60
-    ? Math.floor(m / 60) + " ч " + (m % 60) + " мин"
-    : m + " мин " + s + " с";
-}
+    function fmtDur(sec) {
+      if (sec < 60) return sec.toFixed(3).replace(".", ",") + " с";
+      const m = Math.floor(sec / 60), s = Math.round(sec % 60);
+      return m >= 60
+        ? Math.floor(m / 60) + " ч " + (m % 60) + " мин"
+        : m + " мин " + s + " с";
+    }
 
-function updateExportInfo() {
-  const r = exportRange();
-  document.getElementById("exportInfo").textContent =
-    r ? `Выгрузка: ${r.label}, ${fmtDur(r.to - r.from)}` : "Выгрузка: —";
-}
+    function updateExportInfo() {
+      const r = exportRange();
+      document.getElementById("exportInfo").textContent =
+        r ? `Выгрузка: ${r.label}, ${fmtDur(r.to - r.from)}` : "Выгрузка: —";
+    }
 
-function exportName(r) {
-  const plcName = (meta.title.split(" · ")[0] || "plc").replace(/[\\/:*?"<>|]/g, "_");
-  const f = sec => {
-    const d = new Date(sec * 1000), p = n => String(n).padStart(2, "0");
-    return { date: d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()),
-             time: p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) };
-  };
-  const a = f(r.from), b = f(r.to);
-  return `${plcName}_${a.date}_${a.time}-${b.time}`;
-}
+    function exportName(r) {
+      const plcName = (meta.title.split(" · ")[0] || "plc").replace(/[\\/:*?"<>|]/g, "_");
+      const f = sec => {
+        const d = new Date(sec * 1000), p = n => String(n).padStart(2, "0");
+        return {
+          date: d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()),
+          time: p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds())
+        };
+      };
+      const a = f(r.from), b = f(r.to);
+      return `${plcName}_${a.date}_${a.time}-${b.time}`;
+    }
 
-// ---------- CSV ----------
+    // ---------- CSV ----------
 
-document.getElementById("btnCsv").onclick = () => {
-  const r = exportRange();
-  if (!r) return;
-  location.href = "api/history/csv?" + query({
-    from: Math.floor(r.from * 1000),
-    to:   Math.ceil(r.to * 1000),
-  });
-};
+    document.getElementById("btnCsv").onclick = () => {
+      const r = exportRange();
+      if (!r) return;
+      location.href = "api/history/csv?" + query({
+        from: Math.floor(r.from * 1000),
+        to: Math.ceil(r.to * 1000),
+      });
+    };
 
-// ---------- PNG ----------
+    // ---------- PNG ----------
 
-document.getElementById("btnPng").onclick = async () => {
-  const r = exportRange();
-  if (!r) return;
+    document.getElementById("btnPng").onclick = async () => {
+      const r = exportRange();
+      if (!r) return;
 
-  if (r.label === "A–B") {
-    viewer.setRange(r.from, r.to);
-    await load(r.from, r.to);
-  }
+      if (r.label === "A–B") {
+        viewer.setRange(r.from, r.to);
+        await load(r.from, r.to);
+      }
 
-  const lanes = viewer.getLanes();
-  const dpr = window.devicePixelRatio || 1;
-  const px = n => n * dpr;
-  const NAME_W = 170, VAL_W = 140, HEAD = 64, FOOT = 34;
+      const lanes = viewer.getLanes();
+      const dpr = window.devicePixelRatio || 1;
+      const px = n => n * dpr;
+      const NAME_W = 170, VAL_W = 140, HEAD = 64, FOOT = 34;
 
-  const plotW = lanes[0].u.ctx.canvas.width;
-  const plotsH = lanes.reduce((s, l) => s + l.u.ctx.canvas.height, 0);
+      const plotW = lanes[0].u.ctx.canvas.width;
+      const axisCanvas = viewer.getAxis().ctx.canvas; // ось времени — отдельной строкой внизу
+      const plotsH = lanes.reduce((s, l) => s + l.u.ctx.canvas.height, 0) + axisCanvas.height;
 
-  const c = document.createElement("canvas");
-  c.width  = px(NAME_W + VAL_W) + plotW;
-  c.height = px(HEAD + FOOT) + plotsH;
-  const ctx = c.getContext("2d");
+      const c = document.createElement("canvas");
+      c.width = px(NAME_W + VAL_W) + plotW;
+      c.height = px(HEAD + FOOT) + plotsH;
+      const ctx = c.getContext("2d");
 
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, c.width, c.height);
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, c.width, c.height);
 
-  ctx.fillStyle = "#000";
-  ctx.font = `bold ${px(16)}px sans-serif`;
-  ctx.fillText(meta.title, px(10), px(24));
-  ctx.font = `${px(13)}px sans-serif`;
-  ctx.fillText(`Промежуток: ${fmtTime(r.from)} — ${fmtTime(r.to)}  (${fmtDur(r.to - r.from)})`,
-               px(10), px(46));
+      ctx.fillStyle = "#000";
+      ctx.font = `bold ${px(16)}px sans-serif`;
+      ctx.fillText(meta.title, px(10), px(24));
+      ctx.font = `${px(13)}px sans-serif`;
+      ctx.fillText(`Промежуток: ${fmtTime(r.from)} — ${fmtTime(r.to)}  (${fmtDur(r.to - r.from)})`,
+        px(10), px(46));
 
-  let y = px(HEAD);
-  lanes.forEach(l => {
-    ctx.fillStyle = "#000";
-    ctx.font = `${px(13)}px sans-serif`;
-    ctx.fillText(l.name, px(8), y + px(30));
-    ctx.fillStyle = "#888";
-    ctx.font = `${px(11)}px sans-serif`;
-    ctx.fillText(l.sub, px(8), y + px(46));
+      let y = px(HEAD);
+      lanes.forEach(l => {
+        ctx.fillStyle = "#000";
+        ctx.font = `${px(13)}px sans-serif`;
+        ctx.fillText(l.name, px(8), y + px(30));
+        ctx.fillStyle = "#888";
+        ctx.font = `${px(11)}px sans-serif`;
+        ctx.fillText(l.sub, px(8), y + px(46));
 
-    ctx.drawImage(l.u.ctx.canvas, px(NAME_W), y);
+        ctx.drawImage(l.u.ctx.canvas, px(NAME_W), y);
 
-    ctx.fillStyle = "#000";
-    ctx.font = `bold ${px(12)}px monospace`;
-    l.valEl.textContent.split("\n").forEach((line, k) =>
-      ctx.fillText(line, px(NAME_W + 8) + plotW, y + px(24 + 16 * k)));
+        ctx.fillStyle = "#000";
+        ctx.font = `bold ${px(12)}px monospace`;
+        l.valEl.textContent.split("\n").forEach((line, k) =>
+          ctx.fillText(line, px(NAME_W + 8) + plotW, y + px(24 + 16 * k)));
 
-    y += l.u.ctx.canvas.height;
-    ctx.strokeStyle = "#ddd";
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(c.width, y);
-    ctx.stroke();
-  });
+        y += l.u.ctx.canvas.height;
+        ctx.strokeStyle = "#ddd";
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(c.width, y);
+        ctx.stroke();
+      });
 
-  ctx.fillStyle = "#000";
-  ctx.font = `${px(13)}px monospace`;
-  ctx.fillText(viewer.cursorsText(), px(10), y + px(22));
+      ctx.drawImage(axisCanvas, px(NAME_W), y); // подписи времени под дорожками
+      y += axisCanvas.height;
 
-  c.toBlob(blob => {
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = exportName(r) + ".png";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  }, "image/png");
-};
+      ctx.fillStyle = "#000";
+      ctx.font = `${px(13)}px monospace`;
+      ctx.fillText(viewer.cursorsText(), px(10), y + px(22));
 
-// ---------- Загрузка данных ----------
+      c.toBlob(blob => {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = exportName(r) + ".png";
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      }, "image/png");
+    };
 
-async function load(minS, maxS) {
-  const no = ++reqNo;
-  setStatus("загрузка…");
-  const extra = { width: Math.round(window.innerWidth) };
-  if (minS != null) {
-    extra.from = Math.floor(minS * 1000);
-    extra.to   = Math.ceil(maxS * 1000);
-  }
-  const resp = await fetch("api/history/data?" + query(extra));
-  if (!resp.ok) { setStatus("ошибка: " + await resp.text(), true); return; }
-  const d = await resp.json();
-  if (no !== reqNo) return;
+    // ---------- Загрузка данных ----------
 
-  d.series.forEach((s, i) => viewer.setSeries(i, s.t.map(t => t / 1000), s.v));
-  viewer.setRange(minS ?? full.from, maxS ?? full.to);
-  viewer.updateCursors();
-  setStatus(d.exact
-    ? "показаны все точки"
-    : "прорежено для обзора (пики сохранены) — выделите участок, чтобы увидеть все точки");
-}
+    async function load(minS, maxS) {
+      const no = ++reqNo;
+      setStatus("загрузка…");
+      const extra = { width: Math.round(window.innerWidth) };
+      if (minS != null) {
+        extra.from = Math.floor(minS * 1000);
+        extra.to = Math.ceil(maxS * 1000);
+      }
+      const resp = await fetch("api/history/data?" + query(extra));
+      if (!resp.ok) { setStatus("ошибка: " + await resp.text(), true); return; }
+      const d = await resp.json();
+      if (no !== reqNo) return;
 
-async function main() {
-  if (!file || names.length === 0) {
-    setStatus("Не выбраны файл или сигналы — вернитесь к списку файлов", true);
-    return;
-  }
-  const resp = await fetch("api/history/meta?" + query({}));
-  if (!resp.ok) { setStatus("ошибка: " + await resp.text(), true); return; }
-  meta = await resp.json();
+      d.series.forEach((s, i) => viewer.setSeries(i, s.t.map(t => t / 1000), s.v));
+      viewer.setRange(minS ?? full.from, maxS ?? full.to);
+      viewer.updateCursors();
+      setStatus(d.exact
+        ? "показаны все точки"
+        : "прорежено для обзора (пики сохранены) — выделите участок, чтобы увидеть все точки");
+    }
 
-  document.getElementById("title").textContent = "История: " + meta.title;
-  full = { from: meta.from_ms / 1000, to: meta.to_ms / 1000 };
-  viewer.build(meta.signals.map(s => ({ name: s.name, unit: s.unit, periodMs: s.period_ms })));
-  await load();
-  if (meta.damaged) setStatus("Файл оборван (например, отключали питание) — показана целая часть", true);
-}
+    async function main() {
+      if (!file || names.length === 0) {
+        setStatus("Не выбраны файл или сигналы — вернитесь к списку файлов", true);
+        return;
+      }
+      const resp = await fetch("api/history/meta?" + query({}));
+      if (!resp.ok) { setStatus("ошибка: " + await resp.text(), true); return; }
+      meta = await resp.json();
 
-document.getElementById("btnReset").onclick = () => load();
-main();
-</script>
-<script src="snapshot.js"></script>
+      document.getElementById("title").textContent = "История: " + meta.title;
+      full = { from: meta.from_ms / 1000, to: meta.to_ms / 1000 };
+      viewer.build(meta.signals.map(s => ({ name: s.name, unit: s.unit, periodMs: s.period_ms })));
+      await load();
+      if (meta.damaged) setStatus("Файл оборван (например, отключали питание) — показана целая часть", true);
+    }
+
+    document.getElementById("btnReset").onclick = () => load();
+    document.getElementById("btnOrder").onclick = () => viewer.resetOrder();
+    main();
+  </script>
+  <script src="snapshot.js"></script>
 </body>
+
 </html>
