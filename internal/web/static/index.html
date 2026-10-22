@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>PLC Analyzer</title>
+<link rel="stylesheet" href="uPlot.min.css">
+<link rel="stylesheet" href="/isa101.css">
+
+</head>
+<body>
+<h3>PLC Analyzer
+  <select id="plcSel"></select>
+  <a href="/plcs">ПЛК</a>
+  <a href="/signals" id="lnkSignals">Сигналы</a>
+  <a href="/history">История</a>
+  <a href="/snapshots">Слепки</a>
+</h3>
+<div id="plcstatus" hx-get="ui/status" hx-vals='js:{plc: PLC_ID}' hx-trigger="load, every 1s">загрузка статуса…</div>
+<div id="recstatus" hx-get="ui/recstatus" hx-vals='js:{plc: PLC_ID}' hx-trigger="load, every 2s"></div>
+
+<div id="toolbar">
+  Окно:
+  <button data-win="60" class="active">1 мин</button>
+  <button data-win="120">2 мин</button>
+  <button data-win="300">5 мин</button>
+  <button data-win="600">10 мин</button>
+  <button id="btnStop">⏸ Стоп</button>
+  <span id="hint">ЛКМ — курсор A · ПКМ — курсор B · выделение — зум · Esc — убрать курсоры</span>
+</div>
+<div id="statusRow">
+  <span id="status">подключение…</span>
+  <span id="hoverTime"></span>
+</div>
+<div id="cursors" hidden>
+  <span id="cursorText"></span>
+  <button id="btnClearCur">✕ убрать курсоры</button>
+</div>
+<div id="lanes"></div>
+
+<script src="htmx.min.js"></script>
+<script src="isa101.js"></script>
+<script src="uPlot.iife.min.js"></script>
+<script>
+// ПЛК страницы: из адреса /?plc=2, иначе сервер возьмёт первый
+const PLC_ID = new URLSearchParams(location.search).get("plc") || "";
+const plcQ   = PLC_ID ? "?plc=" + encodeURIComponent(PLC_ID) : "";
+
+const MAX_S  = 600;
+const LANE_H = 80;
+const NAME_W = 130;
+const VAL_W  = 110;
+const COLOR_A = ISA.cursorA;
+const COLOR_B = ISA.cursorB;
+const colors  = ISA.traces;
+
+let windowS       = 60;
+let paused        = false;
+let frozenEnd     = 0;
+let curA          = null;
+let curB          = null;
+let justZoomed    = false;
+let configChanged = false;
+
+const plotWidth = () => window.innerWidth - NAME_W - VAL_W - 40;
+const statusEl  = document.getElementById("status");
+const hoverEl   = document.getElementById("hoverTime");
+const btnStop   = document.getElementById("btnStop");
+
+function setStatus(text, isPaused) {
+  statusEl.textContent = text;
+  statusEl.classList.toggle("paused", isPaused);
+}
+
+document.body.addEventListener("htmx:sendError", () => {
+  document.getElementById("plcstatus").innerHTML =
+    '<div class="bar bad">● СЕРВЕР НЕДОСТУПЕН — данные на экране не обновляются</div>';
+});
+
+// ---------- Выбор ПЛК ----------
+
+async function initPLCs() {
+  const list = await (await fetch("api/plcs")).json();
+  const sel = document.getElementById("plcSel");
+  list.forEach(p => {
+    const o = document.createElement("option");
+    o.value = p.id;
+    o.textContent = `${p.name} (${p.ip})`;
+    sel.appendChild(o);
+  });
+  const current = PLC_ID || (list[0] ? String(list[0].id) : "");
+  sel.value = current;
+  document.getElementById("lnkSignals").href = "/signals?plc=" + current;
+  sel.onchange = () => { location.href = "/?plc=" + sel.value; };
+}
+
+function nearestIdx(xd, t) {
+  if (xd.length === 0) return -1;
+  let lo = 0, hi = xd.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (xd[mid] < t) lo = mid + 1; else hi = mid;
+  }
+  if (lo > 0 && t - xd[lo - 1] < xd[lo] - t) lo--;
+  return lo;
+}
+
+function fmtTime(sec) {
+  const d = new Date(sec * 1000);
+  return d.toLocaleTimeString("ru-RU", { hour12: false }) + "." +
+         String(d.getMilliseconds()).padStart(3, "0");
+}
+
+function fmtPeriod(ms) {
+  return ms >= 1000 ? (ms / 1000) + " с" : ms + " мс";
+}
+
+async function main() {
+  initPLCs();
+
+  const groups = await (await fetch("api/groups" + plcQ)).json();
+
+  if (groups.length === 0) {
+    setStatus("У этого ПЛК нет включённых сигналов — добавьте их на странице «Сигналы»", false);
+  }
+
+  const gx = groups.map(() => []);
+  const gy = groups.map(g => g.names.map(() => []));
+
+  const laneDefs = [];
+  groups.forEach((g, gi) =>
+    g.names.forEach((name, si) => laneDefs.push({ gi, si, name, periodMs: g.period_ms })));
+
+  function latestTime() {
+    let m = -Infinity;
+    gx.forEach(x => { if (x.length) m = Math.max(m, x[x.length - 1]); });
+    return m;
+  }
+
+  const sync = uPlot.sync("lanes");
+  const lanesEl      = document.getElementById("lanes");
+  const cursorsEl    = document.getElementById("cursors");
+  const cursorTextEl = document.getElementById("cursorText");
+  let lanes = [];
+
+  // ---------- Курсоры ----------
+
+  function drawCursors(u) {
+    const ctx = u.ctx;
+    const { left, top, width, height } = u.bbox;
+    [[curA, COLOR_A], [curB, COLOR_B]].forEach(([t, color]) => {
+      if (t == null) return;
+      const x = Math.round(u.valToPos(t, "x", true));
+      if (x < left || x > left + width) return;
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2 * window.devicePixelRatio;
+      ctx.beginPath();
+      ctx.moveTo(x, top);
+      ctx.lineTo(x, top + height);
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
+
+  function valueAt(u, t) {
+    const i = nearestIdx(u.data[0], t);
+    return i < 0 ? "—" : u.data[1][i];
+  }
+
+  function showLaneValues(u, valEl) {
+    if (!paused) return;
+    const parts = [];
+    if (curA != null) parts.push("A " + valueAt(u, curA));
+    if (curB != null) parts.push("B " + valueAt(u, curB));
+    const idx = u.cursor.idx;
+    if (idx != null) parts.push("• " + u.data[1][idx]);
+    if (parts.length === 0) {
+      const d = u.data[1];
+      parts.push(d.length ? d[d.length - 1] : "—");
+    }
+    valEl.textContent = parts.join("\n");
+  }
+
+  function updateCursors() {
+    lanes.forEach(l => {
+      l.u.redraw(false);
+      showLaneValues(l.u, l.valEl);
+    });
+
+    if (curA == null && curB == null) {
+      cursorsEl.hidden = true;
+      return;
+    }
+    cursorsEl.hidden = false;
+    cursorTextEl.innerHTML = "";
+    const add = (cls, text) => {
+      const s = document.createElement("span");
+      if (cls) s.className = cls;
+      s.textContent = text;
+      cursorTextEl.append(s, "    ");
+    };
+    if (curA != null) add("a", "A: " + fmtTime(curA));
+    if (curB != null) add("b", "B: " + fmtTime(curB));
+    if (curA != null && curB != null) add("", "Δt = " + (curB - curA).toFixed(3) + " с");
+  }
+
+  function setCursor(which, u, px) {
+    if (!paused) setPaused(true);
+    const i = nearestIdx(u.data[0], u.posToVal(px, "x"));
+    if (i < 0) return;
+    const t = u.data[0][i];
+    if (which === "A") curA = t; else curB = t;
+    updateCursors();
+  }
+
+  function clearCursors() {
+    curA = curB = null;
+    updateCursors();
+  }
+  document.getElementById("btnClearCur").onclick = clearCursors;
+  document.addEventListener("keydown", e => { if (e.key === "Escape") clearCursors(); });
+
+  // ---------- Зум ----------
+
+  function zoomAll(min, max) {
+    if (!paused) setPaused(true);
+    lanes.forEach(l => l.u.setScale("x", { min, max }));
+  }
+
+  // ---------- Дорожки ----------
+
+  lanes = laneDefs.map((d, i) => {
+    const row    = document.createElement("div");
+    const nameEl = document.createElement("div");
+    const plotEl = document.createElement("div");
+    const valEl  = document.createElement("div");
+    row.className = "lane";
+    nameEl.className = "name";
+    valEl.className = "val";
+
+    const nm = document.createElement("div");
+    nm.textContent = d.name;
+    const pr = document.createElement("div");
+    pr.className = "period";
+    pr.textContent = fmtPeriod(d.periodMs);
+    nameEl.append(nm, pr);
+    nameEl.title = d.name + " — каждые " + fmtPeriod(d.periodMs);
+
+    valEl.textContent = "—";
+    row.append(nameEl, plotEl, valEl);
+    lanesEl.appendChild(row);
+
+    const isFirst = i === 0;
+    const isLast  = i === laneDefs.length - 1;
+    const u = new uPlot({
+      width:  plotWidth(),
+      height: LANE_H + (isLast ? 30 : 0),
+      legend: { show: false },
+      cursor: {
+        sync: { key: sync.key },
+        drag: { x: true, y: false, setScale: false },
+      },
+      hooks: {
+        draw: [drawCursors],
+        setCursor: [u => {
+          showLaneValues(u, valEl);
+          if (paused && isFirst) {
+            const idx = u.cursor.idx;
+            hoverEl.textContent = idx != null
+              ? "курсор мыши: " + fmtTime(u.data[0][idx]) : "";
+          }
+        }],
+        setSelect: [u => {
+          if (u.select.width < 5) return;
+          justZoomed = true;
+          const min = u.posToVal(u.select.left, "x");
+          const max = u.posToVal(u.select.left + u.select.width, "x");
+          zoomAll(min, max);
+          u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
+        }],
+      },
+      axes: isaAxes(isLast),
+      series: [{}, { stroke: colors[i % colors.length], width: 1 }],
+    }, [gx[d.gi], gy[d.gi][d.si]], plotEl);
+
+    u.over.addEventListener("click", e => {
+      if (justZoomed) { justZoomed = false; return; }
+      setCursor("A", u, e.offsetX);
+    });
+    u.over.addEventListener("contextmenu", e => {
+      e.preventDefault();
+      setCursor("B", u, e.offsetX);
+    });
+
+    return { u, valEl, gi: d.gi, si: d.si };
+  });
+
+  // ---------- Live / Стоп ----------
+
+  function redraw() {
+    const max = latestTime();
+    if (!isFinite(max)) return;
+    lanes.forEach(l => {
+      const x = gx[l.gi], y = gy[l.gi][l.si];
+      l.u.setData([x, y], false);
+      l.u.setScale("x", { min: max - windowS, max });
+      l.valEl.textContent = y.length ? y[y.length - 1] : "—";
+    });
+  }
+
+  function setPaused(on) {
+    paused = on;
+    if (on) {
+      const fx = gx.map(x => x.slice());
+      frozenEnd = latestTime();
+      lanes.forEach(l => l.u.setData([fx[l.gi], gy[l.gi][l.si].slice()], false));
+      btnStop.textContent = "▶ Live";
+      setStatus("СТОП — экран заморожен, запись продолжается", true);
+    } else {
+      if (configChanged) {
+        location.reload();
+        return;
+      }
+      curA = curB = null;
+      cursorsEl.hidden = true;
+      hoverEl.textContent = "";
+      btnStop.textContent = "⏸ Стоп";
+      setStatus("Live", false);
+      redraw();
+    }
+  }
+  btnStop.onclick = () => setPaused(!paused);
+
+  document.querySelectorAll("#toolbar button[data-win]").forEach(btn => {
+    btn.onclick = () => {
+      windowS = Number(btn.dataset.win);
+      document.querySelectorAll("#toolbar button[data-win]")
+        .forEach(b => b.classList.toggle("active", b === btn));
+      if (paused) {
+        lanes.forEach(l => l.u.setScale("x", { min: frozenEnd - windowS, max: frozenEnd }));
+      } else {
+        redraw();
+      }
+    };
+  });
+
+  window.addEventListener("resize", () => {
+    lanes.forEach((l, i) => l.u.setSize({
+      width: plotWidth(),
+      height: LANE_H + (i === lanes.length - 1 ? 30 : 0),
+    }));
+  });
+
+  // ---------- Поток данных ----------
+
+  const es = new EventSource("api/stream" + plcQ);
+  es.onopen  = () => { if (!paused && groups.length) setStatus("Live", false); };
+  es.onerror = () => { if (!paused) setStatus("нет связи с сервером, переподключение…", false); };
+
+  es.addEventListener("config", () => {
+    es.close();
+    if (paused) {
+      configChanged = true;
+      setStatus("СТОП — состав сигналов изменился, нажмите Live для обновления", true);
+    } else {
+      setStatus("Состав сигналов изменился — обновляю…", false);
+      setTimeout(() => location.reload(), 300);
+    }
+  });
+
+  es.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    const x = gx[msg.g], y = gy[msg.g];
+    for (const p of msg.pts) {
+      x.push(p.T / 1000);
+      p.V.forEach((v, i) => y[i].push(v));
+    }
+    const cutoff = x[x.length - 1] - MAX_S;
+    let k = 0;
+    while (k < x.length && x[k] < cutoff) k++;
+    if (k > 0) {
+      x.splice(0, k);
+      y.forEach(arr => arr.splice(0, k));
+    }
+    if (!paused) redraw();
+  };
+}
+main();
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{{define "plcname"}}
+<span id="plcname">ПЛК <b>{{.Name}}</b> ({{.IP}})
+  <button hx-get="/ui/plc/edit" hx-target="#plcname" hx-swap="outerHTML">переименовать</button>
+</span>
+{{end}}
+
+
+{{define "plcedit"}}
+<form id="plcname" hx-put="/ui/plc" hx-target="this" hx-swap="outerHTML" style="display:inline">
+  ПЛК <input name="name" value="{{.PLC.Name}}" size="20"> ({{.PLC.IP}})
+  <button>сохранить</button>
+  <button type="button" hx-get="/ui/plc" hx-target="#plcname" hx-swap="outerHTML">отмена</button>
+  {{if .Err}}<span class="err">{{.Err}}</span>{{end}}
+</form>
+{{end}}

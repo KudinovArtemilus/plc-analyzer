@@ -1,0 +1,94 @@
+{{define "plcs"}}
+<!doctype html>
+<html lang="ru">
+
+<head>
+  <meta charset="utf-8">
+  <title>ПЛК — PLC Analyzer</title>
+  <link rel="stylesheet" href="/isa101.css">
+</head>
+
+<body>
+  <nav><a href="/">← Графики</a> <b>ПЛК</b> <a href="/signals">Сигналы</a> <a href="/history">История</a> <a
+      href="/snapshots">Слепки</a></nav>
+  <h3>Контроллеры</h3>
+  <div class="note">Добавленный ПЛК начинает опрашиваться через секунду. Потом добавьте ему сигналы — ссылка «сигналы» в
+    его строке.</div>
+
+  {{template "plcaddform" .Form}}
+
+  <table>
+    <thead>
+      <tr>
+        <th>Название</th>
+        <th>IP</th>
+        <th>rack</th>
+        <th>slot</th>
+        <th>Состояние</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .PLCs}}{{template "plcrow" .}}{{end}}
+    </tbody>
+  </table>
+
+  <script src="/htmx.min.js"></script>
+</body>
+
+</html>
+{{end}}
+
+
+{{define "plcaddform"}}
+<form id="plcadd" hx-post="/ui/plcs" hx-target="this" hx-swap="outerHTML">
+  <b>Новый ПЛК:</b>
+  <input name="name" placeholder="название, например 1518F" value="{{.PLC.Name}}" size="18">
+  IP <input name="ip" placeholder="192.168.0.10" value="{{.PLC.IP}}" size="14">
+  rack <input name="rack" value="{{.PLC.Rack}}" size="2">
+  slot <input name="slot" value="{{.PLC.Slot}}" size="2">
+  <button>Добавить</button>
+  <small>S7-300: slot 2 · S7-1200/1500: slot 1</small>
+  {{if .Err}}<span class="err">{{.Err}}</span>{{end}}
+</form>
+{{end}}
+
+{{define "plcrow"}}
+<tr id="plc-{{.ID}}">
+  <td><b>{{.Name}}</b></td>
+  <td>{{.IP}}</td>
+  <td>{{.Rack}}</td>
+  <td>{{.Slot}}</td>
+  <td hx-get="/ui/plcs/{{.ID}}/state" hx-trigger="load, every 2s">…</td>
+  <td>
+    <a href="/?plc={{.ID}}">графики</a>
+    <a href="/signals?plc={{.ID}}">сигналы</a>
+    <button hx-get="/ui/plcs/{{.ID}}/edit" hx-target="closest tr" hx-swap="outerHTML">изменить</button>
+  </td>
+</tr>
+{{end}}
+
+
+{{define "plceditrow"}}
+<tr id="plc-{{.PLC.ID}}" class="editing">
+  <td><input name="name" value="{{.PLC.Name}}" size="14"></td>
+  <td><input name="ip" value="{{.PLC.IP}}" size="14"></td>
+  <td><input name="rack" value="{{.PLC.Rack}}" size="2"></td>
+  <td><input name="slot" value="{{.PLC.Slot}}" size="2"></td>
+  <td>{{if .Err}}<span class="err">{{.Err}}</span>{{end}}</td>
+  <td>
+    <button hx-put="/ui/plcs/{{.PLC.ID}}" hx-include="closest tr" hx-target="closest tr"
+      hx-swap="outerHTML">сохранить</button>
+    <button hx-get="/ui/plcs/{{.PLC.ID}}" hx-target="closest tr" hx-swap="outerHTML">отмена</button>
+  </td>
+</tr>
+{{end}}
+
+
+{{define "plcstate"}}
+{{if not .Running}}<span class="muted">запускается…</span>
+{{else if .St.Connected}}<span class="ok">связь есть</span> · {{.St.Rate}} чт/с · макс {{.Max}}
+{{else}}<span class="bad">▲ НЕТ СВЯЗИ уже {{.Down}}</span>{{end}}
+<br><small>{{if .Rec.File}}запись: {{.RecSize}}{{else}}запись: ожидание данных{{end}}</small>
+{{if .Rec.Dropped}}<br><span class="warn">▲ потеряно точек записи: {{.Rec.Dropped}}</span>{{end}}
+{{end}}

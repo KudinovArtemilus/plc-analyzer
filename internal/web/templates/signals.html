@@ -1,0 +1,128 @@
+{{define "page"}}
+<!doctype html>
+<html lang="ru">
+
+<head>
+  <meta charset="utf-8">
+  <title>Сигналы — PLC Analyzer</title>
+  <link rel="stylesheet" href="/isa101.css">
+</head>
+
+<body>
+  <nav><a href="/?plc={{.PLC.ID}}">← Графики</a> <a href="/plcs">ПЛК</a> <b>Сигналы</b> <a
+      href="/history?plc={{.PLC.ID}}">История</a> <a href="/snapshots?plc={{.PLC.ID}}">Слепки</a></nav>
+  <h3>Сигналы ПЛК
+    <select onchange="location.href='/signals?plc=' + this.value">
+      {{range .PLCs}}<option value="{{.ID}}" {{if eq .ID $.PLC.ID}}selected{{end}}>{{.Name}} ({{.IP}})</option>{{end}}
+    </select>
+    <a href="/plcs">все ПЛК →</a>
+  </h3>
+  <div class="note">Изменения применяются к опросу автоматически примерно через секунду.
+    Аварии и предупреждения — только BOOL (1 = авария), на графиках по умолчанию не показываются.</div>
+
+  {{template "addform" .Form}}
+
+  <table>
+    <thead>
+      <tr>
+        <th>Имя</th>
+        <th>Тип сигнала</th>
+        <th>Адрес</th>
+        <th>Тип данных</th>
+        <th>Период, мс</th>
+        <th>Коэф. ×</th>
+        <th>Смещ. +</th>
+        <th>Ед.</th>
+        <th>Сообщение</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Signals}}{{template "row" .}}{{end}}
+    </tbody>
+  </table>
+
+  <script src="/htmx.min.js"></script>
+</body>
+
+</html>
+{{end}}
+
+
+{{define "row"}}
+<tr id="sig-{{.ID}}" {{if not .Enabled}}class="off" {{end}}>
+  <td>{{.Name}}</td>
+  <td>{{kindTitle .Kind}}</td>
+  <td>{{.Addr}}</td>
+  <td>{{.Type}}</td>
+  <td>{{.PeriodMs}}</td>
+  <td>{{.Scale}}</td>
+  <td>{{.Bias}}</td>
+  <td>{{.Unit}}</td>
+  <td>{{.Message}}</td>
+  <td>
+    <button hx-get="/ui/signals/{{.ID}}/edit" hx-target="closest tr" hx-swap="outerHTML">изменить</button>
+    <button hx-post="/ui/signals/{{.ID}}/toggle" hx-target="closest tr" hx-swap="outerHTML">
+      {{if .Enabled}}выключить{{else}}включить{{end}}
+    </button>
+    <button hx-delete="/ui/signals/{{.ID}}" hx-target="closest tr" hx-swap="outerHTML"
+      hx-confirm="Удалить сигнал {{.Name}}?">удалить</button>
+  </td>
+</tr>
+{{end}}
+
+
+{{define "editrow"}}
+<tr id="sig-{{.Row.ID}}" class="editing">
+  <td><input name="name" value="{{.Row.Name}}" size="14"></td>
+  <td>{{template "kindselect" .Row.Kind}}</td>
+  <td><input name="addr" value="{{.Row.Addr}}" size="13"></td>
+  <td>{{template "typeselect" .Row.Type}}</td>
+  <td><input name="period_ms" value="{{.Row.PeriodMs}}" size="5"></td>
+  <td><input name="scale" value="{{.Row.Scale}}" size="5"></td>
+  <td><input name="bias" value="{{.Row.Bias}}" size="5"></td>
+  <td><input name="unit" value="{{.Row.Unit}}" size="4"></td>
+  <td><input name="message" value="{{.Row.Message}}" size="28"></td>
+  <td>
+    <button hx-put="/ui/signals/{{.Row.ID}}" hx-include="closest tr" hx-target="closest tr"
+      hx-swap="outerHTML">сохранить</button>
+    <button hx-get="/ui/signals/{{.Row.ID}}" hx-target="closest tr" hx-swap="outerHTML">отмена</button>
+    {{if .Err}}<div class="err">{{.Err}}</div>{{end}}
+  </td>
+</tr>
+{{end}}
+
+
+{{define "addform"}}
+<form id="addform" hx-post="/ui/signals" hx-target="this" hx-swap="outerHTML">
+  <input type="hidden" name="plc" value="{{.Row.PLCID}}">
+  <b>Новый сигнал:</b>
+  <input name="name" placeholder="имя" value="{{.Row.Name}}" size="14">
+  {{template "kindselect" .Row.Kind}}
+  <input name="addr" placeholder="DB11.DBW90" value="{{.Row.Addr}}" size="13">
+  {{template "typeselect" .Row.Type}}
+  <input name="period_ms" value="{{.Row.PeriodMs}}" size="5"> мс
+  × <input name="scale" value="{{.Row.Scale}}" size="5">
+  + <input name="bias" value="{{.Row.Bias}}" size="5">
+  <input name="unit" placeholder="ед." value="{{.Row.Unit}}" size="4">
+  <input name="message" placeholder="текст сообщения (для аварий)" value="{{.Row.Message}}" size="28">
+  <button>Добавить</button>
+  {{if .Err}}<span class="err">{{.Err}}</span>{{end}}
+</form>
+{{end}}
+
+
+{{define "typeselect"}}
+<select name="type">
+  {{$cur := .}}
+  {{range types}}<option {{if eq . $cur}}selected{{end}}>{{.}}</option>{{end}}
+</select>
+{{end}}
+
+
+{{define "kindselect"}}
+<select name="kind">
+  {{$cur := .}}
+  {{range kinds}}<option value="{{.}}" {{if eq . $cur}}selected{{end}}>{{kindTitle .}}</option>{{end}}
+</select>
+{{end}}
