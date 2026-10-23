@@ -425,3 +425,38 @@ tr.editing td {
   border: 1px solid var(--line);
   border-top: none;
 }
+
+/* ---------- Наложение второго сигнала на дорожку ---------- */
+
+/* .lane задаёт display:flex — без этого правила атрибут hidden не спрятал бы строку */
+.lane[hidden] {
+  display: none;
+}
+
+/* Строка «+ имя» под именем дорожки: цвет и пунктир — как у линии на графике */
+.lane .name .ovl {
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lane .name .ovl .sample {
+  display: inline-block;
+  width: 14px;
+  margin-right: 3px;
+  vertical-align: middle;
+  border-top: 2px dashed currentColor;
+}
+
+.lane .name .ovl button {
+  padding: 0 3px;
+  margin: 0 0 0 2px;
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.lane .name .ovl-pick {
+  max-width: 125px;
+  font-size: 11px;
+}

@@ -29,7 +29,7 @@
     <button id="btnStop">⏸ Стоп</button>
     <button id="btnOrder" title="вернуть дорожки в исходный порядок">↺ исходный порядок</button>
     <span id="hint">ЛКМ — курсор A · ПКМ — курсор B · выделение — зум · Esc — убрать курсоры · ⠿ или ▲▼ у имени —
-      порядок дорожек</span>
+      порядок дорожек · ⊕ — наложить второй сигнал</span>
   </div>
   <div id="statusRow">
     <span id="status">подключение…</span>
@@ -120,6 +120,11 @@
       return ms >= 1000 ? (ms / 1000) + " с" : ms + " мс";
     }
 
+    // fmtVal — не больше 3 знаков после запятой, иначе REAL не помещается в колонку
+    function fmtVal(v) {
+      return v == null ? "—" : Number.isInteger(v) ? String(v) : String(+v.toFixed(3));
+    }
+
     async function main() {
       const plcKey = (await initPLCs()) || "default";
 
@@ -129,8 +134,11 @@
         setStatus("У этого ПЛК нет включённых сигналов — добавьте их на странице «Сигналы»", false);
       }
 
+      // Живые данные: по группе частоты — общее время gx[g] и значения gy[g][сигнал]
       const gx = groups.map(() => []);
       const gy = groups.map(g => g.names.map(() => []));
+      // Что рисуем: в Live — живые массивы, на Стопе — их копия (снимок)
+      let view = { x: gx, y: gy };
 
       const laneDefs = [];
       groups.forEach((g, gi) =>
@@ -147,12 +155,33 @@
       const cursorsEl = document.getElementById("cursors");
       const cursorTextEl = document.getElementById("cursorText");
       let lanes = [];
-      let axisU = null; // строка с осью времени под дорожками
+      let axisU = null;    // строка с осью времени под дорожками
+      let overlays = null; // наложения второго сигнала на дорожку
+      let range = null;    // видимый участок { min, max }
 
       // setX — один и тот же видимый участок для всех дорожек и оси времени
       function setX(min, max) {
+        range = { min, max };
         lanes.forEach(l => l.u.setScale("x", { min, max }));
         if (axisU) axisU.setScale("x", { min, max });
+      }
+
+      // ---------- Наложение ----------
+
+      // Наложенная на дорожку l дорожка (или null)
+      function ovLane(l) {
+        const o = overlays && overlays.get(l.name);
+        return o ? lanes.find(x => x.name === o.name) || null : null;
+      }
+
+      // Данные для графика: свой ряд или оба ряда на общей оси времени.
+      // Сигналы одной группы частоты уже на общем времени — сливать не нужно.
+      function laneData(l) {
+        const x = view.x[l.gi], y = view.y[l.gi][l.si];
+        const o = ovLane(l);
+        if (!o) return [x, y];
+        const y2 = view.y[o.gi][o.si];
+        return o.gi === l.gi ? [x, y, y2] : mergeXY(x, y, view.x[o.gi], y2);
       }
 
       // ---------- Курсоры ----------
@@ -165,6 +194,7 @@
           const x = Math.round(u.valToPos(t, "x", true));
           if (x < left || x > left + width) return;
           ctx.save();
+          ctx.setLineDash([]); // пунктир наложенной линии не должен достаться курсору
           ctx.strokeStyle = color;
           ctx.lineWidth = 2 * window.devicePixelRatio;
           ctx.beginPath();
@@ -175,29 +205,39 @@
         });
       }
 
-      function valueAt(u, t) {
-        const i = nearestIdx(u.data[0], t);
-        return i < 0 ? "—" : u.data[1][i];
+      // Значение сигнала дорожки l в момент t — по его собственным точкам
+      function valueAt(l, t) {
+        const x = view.x[l.gi], y = view.y[l.gi][l.si];
+        const i = nearestIdx(x, t);
+        return i < 0 ? "—" : fmtVal(y[i]);
       }
 
-      function showLaneValues(u, valEl) {
+      // «12» или «12 / 7.5», если на дорожку наложен второй сигнал
+      function valuesAt(l, t) {
+        const o = ovLane(l);
+        return valueAt(l, t) + (o ? " / " + valueAt(o, t) : "");
+      }
+
+      function lastValues(l) {
+        const last = l => { const y = view.y[l.gi][l.si]; return y.length ? fmtVal(y[y.length - 1]) : "—"; };
+        const o = ovLane(l);
+        return last(l) + (o ? " / " + last(o) : "");
+      }
+
+      function showLaneValues(l) {
         if (!paused) return;
         const parts = [];
-        if (curA != null) parts.push("A " + valueAt(u, curA));
-        if (curB != null) parts.push("B " + valueAt(u, curB));
-        const idx = u.cursor.idx;
-        if (idx != null) parts.push("• " + u.data[1][idx]);
-        if (parts.length === 0) {
-          const d = u.data[1];
-          parts.push(d.length ? d[d.length - 1] : "—");
-        }
-        valEl.textContent = parts.join("\n");
+        if (curA != null) parts.push("A " + valuesAt(l, curA));
+        if (curB != null) parts.push("B " + valuesAt(l, curB));
+        const idx = l.u.cursor.idx;
+        if (idx != null && l.u.data[0][idx] != null) parts.push("• " + valuesAt(l, l.u.data[0][idx]));
+        l.valEl.textContent = parts.length ? parts.join("\n") : lastValues(l);
       }
 
       function updateCursors() {
         lanes.forEach(l => {
           l.u.redraw(false);
-          showLaneValues(l.u, l.valEl);
+          showLaneValues(l);
         });
 
         if (curA == null && curB == null) {
@@ -242,29 +282,13 @@
 
       // ---------- Дорожки ----------
 
-      lanes = laneDefs.map((d, i) => {
-        const row = document.createElement("div");
-        const nameEl = document.createElement("div");
-        const plotEl = document.createElement("div");
-        const valEl = document.createElement("div");
-        row.className = "lane";
-        row.dataset.name = d.name; // по имени запоминается порядок дорожек
-        nameEl.className = "name";
-        valEl.className = "val";
+      // makePlot — (пере)создать график дорожки: при построении и когда наложение
+      // поменялось (число линий и шкал uPlot задаётся при создании графика)
+      function makePlot(l) {
+        if (l.u) l.u.destroy();
+        const o = ovLane(l);
+        const ov = o ? { color: overlayColor(l.idx, o.idx), shared: overlays.get(l.name).shared } : null;
 
-        const nm = document.createElement("div");
-        nm.textContent = d.name;
-        const pr = document.createElement("div");
-        pr.className = "period";
-        pr.textContent = fmtPeriod(d.periodMs);
-        nameEl.append(nm, pr);
-        nameEl.title = d.name + " — каждые " + fmtPeriod(d.periodMs);
-
-        valEl.textContent = "—";
-        row.append(nameEl, plotEl, valEl);
-        lanesEl.appendChild(row);
-
-        const isFirst = i === 0;
         const u = new uPlot({
           width: plotWidth(),
           height: LANE_H,
@@ -276,8 +300,8 @@
           hooks: {
             draw: [drawCursors],
             setCursor: [u => {
-              showLaneValues(u, valEl);
-              if (paused && isFirst) {
+              showLaneValues(l);
+              if (paused && !l.row.hidden) {
                 const idx = u.cursor.idx;
                 hoverEl.textContent = idx != null
                   ? "курсор мыши: " + fmtTime(u.data[0][idx]) : "";
@@ -292,9 +316,10 @@
               u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
             }],
           },
-          axes: isaAxes(false), // подписи времени — в отдельной строке под дорожками
-          series: [{}, { stroke: colors[i % colors.length], width: 1 }],
-        }, [gx[d.gi], gy[d.gi][d.si]], plotEl);
+          // подписи времени — в отдельной строке под дорожками; справа — шкала наложенного сигнала
+          axes: isaAxes(false, ov && !ov.shared ? ov.color : null),
+          series: laneSeries(colors[l.idx % colors.length], ov),
+        }, laneData(l), l.plotEl);
 
         u.over.addEventListener("click", e => {
           if (justZoomed) { justZoomed = false; return; }
@@ -305,14 +330,50 @@
           setCursor("B", u, e.offsetX);
         });
 
-        return { u, valEl, gi: d.gi, si: d.si };
-      });
+        l.u = u;
+        const line = l.row.querySelector(".name .ovl"); // подпись «+ имя» — цветом пунктира
+        if (line && ov) line.style.color = ov.color;
+        if (range) u.setScale("x", range);
+        l.valEl.textContent = lastValues(l);
+        showLaneValues(l);
+      }
 
-      // Ось времени и перестановка дорожек
+      lanes = laneDefs.map((d, i) => {
+        const row = document.createElement("div");
+        const nameEl = document.createElement("div");
+        const plotEl = document.createElement("div");
+        const valEl = document.createElement("div");
+        row.className = "lane";
+        row.dataset.name = d.name; // по имени запоминаются порядок дорожек и наложения
+        nameEl.className = "name";
+        valEl.className = "val";
+
+        const nm = document.createElement("div");
+        nm.textContent = d.name;
+        const pr = document.createElement("div");
+        pr.className = "period";
+        pr.textContent = fmtPeriod(d.periodMs);
+        nameEl.append(nm, pr);
+        nameEl.title = d.name + " — каждые " + fmtPeriod(d.periodMs);
+
+        row.append(nameEl, plotEl, valEl);
+        lanesEl.appendChild(row);
+
+        return { idx: i, gi: d.gi, si: d.si, name: d.name, row, plotEl, valEl, u: null };
+      });
+      lanes.forEach(makePlot);
+
+      // Ось времени, перестановка дорожек и наложения
       if (lanes.length) {
         axisU = makeTimeAxis(lanesEl, plotWidth());
         const order = makeSortable(lanesEl, plcKey);
         document.getElementById("btnOrder").onclick = () => order.reset();
+        overlays = makeOverlays(lanesEl, plcKey, name => {
+          const l = lanes.find(x => x.name === name);
+          if (l) makePlot(l);
+        });
+        // Запомненные наложения: теперь overlays есть — перерисовать такие дорожки с двумя линиями
+        lanes.filter(l => overlays.get(l.name)).forEach(makePlot);
       }
 
       // ---------- Live / Стоп ----------
@@ -321,9 +382,9 @@
         const max = latestTime();
         if (!isFinite(max)) return;
         lanes.forEach(l => {
-          const x = gx[l.gi], y = gy[l.gi][l.si];
-          l.u.setData([x, y], false);
-          l.valEl.textContent = y.length ? y[y.length - 1] : "—";
+          if (l.row.hidden) return; // наложенный на другую дорожку — рисуется там
+          l.u.setData(laneData(l), false);
+          l.valEl.textContent = lastValues(l);
         });
         setX(max - windowS, max);
       }
@@ -331,9 +392,10 @@
       function setPaused(on) {
         paused = on;
         if (on) {
-          const fx = gx.map(x => x.slice());
+          // Снимок: дальше данные приходят в gx/gy, а экран показывает копию
+          view = { x: gx.map(x => x.slice()), y: gy.map(g => g.map(y => y.slice())) };
           frozenEnd = latestTime();
-          lanes.forEach(l => l.u.setData([fx[l.gi], gy[l.gi][l.si].slice()], false));
+          lanes.forEach(l => l.u.setData(laneData(l), false));
           btnStop.textContent = "▶ Live";
           setStatus("СТОП — экран заморожен, запись продолжается", true);
         } else {
@@ -341,6 +403,7 @@
             location.reload();
             return;
           }
+          view = { x: gx, y: gy };
           curA = curB = null;
           cursorsEl.hidden = true;
           hoverEl.textContent = "";

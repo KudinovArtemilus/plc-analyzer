@@ -22,7 +22,7 @@
       <button id="btnCsv">📄 CSV</button>
     </span>
     <span id="hint">выделение — зум (подгрузит подробнее) · ЛКМ — курсор A · ПКМ — курсор B · Esc — убрать курсоры · ⠿
-      или ▲▼ у имени — порядок дорожек</span>
+      или ▲▼ у имени — порядок дорожек · ⊕ — наложить второй сигнал</span>
   </div>
   <div id="statusRow">
     <span id="status">загрузка…</span>
@@ -171,6 +171,10 @@
         ctx.fillStyle = "#888";
         ctx.font = `${px(11)}px sans-serif`;
         ctx.fillText(l.sub, px(8), y + px(46));
+        if (l.ovName) { // наложенный сигнал: его цветом и с пометкой «пунктир»
+          ctx.fillStyle = l.ovColor;
+          ctx.fillText("+ " + l.ovName + " (пунктир)", px(8), y + px(62));
+        }
 
         ctx.drawImage(l.u.ctx.canvas, px(NAME_W), y);
 
