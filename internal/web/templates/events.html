@@ -1,0 +1,97 @@
+{{define "events"}}
+<!doctype html>
+<html lang="ru">
+
+<head>
+    <meta charset="utf-8">
+    <title>События — PLC Analyzer</title>
+    <link rel="stylesheet" href="/isa101.css">
+</head>
+
+<body>
+    <nav><a href="/{{if .Q.PLCID}}?plc={{.Q.PLCID}}{{end}}">← Графики</a> <a href="/plcs">ПЛК</a>
+        <a href="/signals{{if .Q.PLCID}}?plc={{.Q.PLCID}}{{end}}">Сигналы</a>
+        <a href="/history{{if .Q.PLCID}}?plc={{.Q.PLCID}}{{end}}">История</a>
+        <a href="/snapshots{{if .Q.PLCID}}?plc={{.Q.PLCID}}{{end}}">Слепки</a> <b>События</b>
+    </nav>
+    <h3>Журнал аварий и предупреждений</h3>
+
+    <!-- Любое изменение фильтра — новая таблица; и раз в 10 с — сама, чтобы новые аварии появлялись без F5 -->
+    <form id="filter" class="panel-form" hx-get="/ui/events" hx-target="#list" hx-trigger="change, every 10s">
+        ПЛК:
+        <select name="plc">
+            <option value="0">все</option>
+            {{range .PLCs}}<option value="{{.ID}}" {{if eq .ID $.Q.PLCID}}selected{{end}}>{{.Name}}</option>{{end}}
+        </select>
+        &nbsp; День: <input type="date" name="day" value="{{.Q.Day}}">
+        &nbsp; Тип:
+        <select name="kind">
+            <option value="">аварии и предупреждения</option>
+            <option value="alarm" {{if eq .Q.Kind "alarm" }}selected{{end}}>только аварии</option>
+            <option value="warning" {{if eq .Q.Kind "warning" }}selected{{end}}>только предупреждения</option>
+        </select>
+    </form>
+
+    <div id="list">{{template "eventlist" .List}}</div>
+
+    <script src="/htmx.min.js"></script>
+</body>
+
+</html>
+{{end}}
+
+
+{{define "eventlist"}}
+{{if not .}}<p>За этот день событий нет.</p>{{else}}
+<table class="events">
+    <thead>
+        <tr>
+            <th>Пришла</th>
+            <th>Ушла</th>
+            <th>Длительность</th>
+            <th>ПЛК</th>
+            <th>Сигнал</th>
+            <th>Сообщение</th>
+            <th>Тип</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .}}
+        <!-- Цвет — только у АКТИВНЫХ: ушедшая авария уже не отклонение (ISA-101) -->
+        <tr class="{{if .Active}}{{if .Warn}}ev-warn{{else}}ev-alarm{{end}}{{end}}">
+            <td class="mono">{{.Came}}</td>
+            <td class="mono">{{if .Active}}<b>активна</b>{{else}}{{.Went}}{{end}}</td>
+            <td>{{.Dur}}</td>
+            <td>{{.PLC}}</td>
+            <td>{{.Signal}}</td>
+            <td>{{.Message}}</td>
+            <td>{{.Kind}}</td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+{{if ge (len .) 1000}}<p class="muted">Показаны последние 1000 событий за день.</p>{{end}}
+{{end}}
+{{end}}
+
+
+{{define "alarms"}}
+{{/* Панель активных аварий на Live. Нет аварий — одна спокойная серая строка. */}}
+{{if not .List}}
+<div class="bar ok">Активных аварий нет · <a href="/events?plc={{.PLCID}}">журнал событий</a></div>
+{{else}}
+<div class="alarms">
+    <div class="alarms-head">
+        {{if .Alarms}}<b class="bad">Аварий: {{.Alarms}}</b>{{end}}
+        {{if .Warns}}<b class="warn">Предупреждений: {{.Warns}}</b>{{end}}
+        · <a href="/events?plc={{.PLCID}}">журнал событий</a>
+    </div>
+    {{range .List}}
+    <div class="bar {{if .Warn}}warn{{else}}bad{{end}}">
+        {{if .Warn}}▲ ПРЕДУПРЕЖДЕНИЕ{{else}}■ АВАРИЯ{{end}}: {{.Message}}
+        <span class="ev-meta">{{.Signal}} · с {{.Came}} · {{.Dur}}</span>
+    </div>
+    {{end}}
+</div>
+{{end}}
+{{end}}

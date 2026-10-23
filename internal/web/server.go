@@ -24,6 +24,7 @@ var static embed.FS
 type Group struct {
 	Period time.Duration
 	Names  []string
+	Kinds  []string // тип каждого сигнала: trend / alarm / warning (по порядку Names)
 	Ring   *buffer.Ring
 }
 
@@ -39,7 +40,7 @@ type config struct {
 var emptyConfig = &config{}
 
 type Server struct {
-	Status   func() plc.Status     // оставлено для совместимости; панели берут состояние через Units
+	Status   func() plc.Status // оставлено для совместимости; панели берут состояние через Units
 	Store    *store.Store
 	PLC      store.PLC             // ПЛК по умолчанию (первый)
 	Rec      func() archive.Status // оставлено для совместимости
@@ -82,6 +83,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/stream", s.stream)
 	mux.HandleFunc("GET /ui/status", s.status)
 	mux.HandleFunc("GET /ui/recstatus", s.recStatus)
+	mux.HandleFunc("GET /ui/alarms", s.alarmsPanel)
 
 	// Сигналы
 	mux.HandleFunc("GET /signals", s.signalsPage)
@@ -108,6 +110,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/snapshots/categories", s.snapshotCategories)
 	mux.HandleFunc("GET /snapshots", s.snapshotsPage)
 	mux.HandleFunc("GET /ui/snapshots", s.snapshotsList)
+
+	// Журнал событий
+	mux.HandleFunc("GET /events", s.eventsPage)
+	mux.HandleFunc("GET /ui/events", s.eventsList)
 
 	// ПЛК
 	mux.HandleFunc("GET /plcs", s.plcsPage)
@@ -143,11 +149,12 @@ func (s *Server) groups(w http.ResponseWriter, r *http.Request) {
 	type groupJSON struct {
 		PeriodMs int64    `json:"period_ms"`
 		Names    []string `json:"names"`
+		Kinds    []string `json:"kinds"` // Live по умолчанию прячет аварии и предупреждения
 	}
 	c := s.config(s.reqPLCID(r))
 	out := make([]groupJSON, len(c.Groups))
 	for i, g := range c.Groups {
-		out[i] = groupJSON{PeriodMs: g.Period.Milliseconds(), Names: g.Names}
+		out[i] = groupJSON{PeriodMs: g.Period.Milliseconds(), Names: g.Names, Kinds: g.Kinds}
 	}
 	writeJSON(w, out)
 }

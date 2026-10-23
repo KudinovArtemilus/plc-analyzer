@@ -1,29 +1,34 @@
 {{define "snapshots"}}
 <!doctype html>
 <html lang="ru">
+
 <head>
-<meta charset="utf-8">
-<title>Слепки — PLC Analyzer</title>
-<link rel="stylesheet" href="/isa101.css">
+  <meta charset="utf-8">
+  <title>Слепки — PLC Analyzer</title>
+  <link rel="stylesheet" href="/isa101.css">
 </head>
+
 <body>
-<nav><a href="/?plc={{.PLC.ID}}">← Графики</a> <a href="/plcs">ПЛК</a> <a href="/signals?plc={{.PLC.ID}}">Сигналы</a> <a href="/history?plc={{.PLC.ID}}">История</a> <b>Слепки</b></nav>
-<h3>Слепки ПЛК
-  <select onchange="location.href='/snapshots?plc=' + this.value">
-    {{range .PLCs}}<option value="{{.ID}}" {{if eq .ID $.PLC.ID}}selected{{end}}>{{.Name}} ({{.IP}})</option>{{end}}
+  <nav><a href="/?plc={{.PLC.ID}}">← Графики</a> <a href="/plcs">ПЛК</a> <a href="/signals?plc={{.PLC.ID}}">Сигналы</a>
+    <a href="/history?plc={{.PLC.ID}}">История</a> <b>Слепки</b> <a href="/events?plc={{.PLC.ID}}">События</a>
+  </nav>
+  <h3>Слепки ПЛК
+    <select onchange="location.href='/snapshots?plc=' + this.value">
+      {{range .PLCs}}<option value="{{.ID}}" {{if eq .ID $.PLC.ID}}selected{{end}}>{{.Name}} ({{.IP}})</option>{{end}}
+    </select>
+  </h3>
+
+  Категория:
+  <select name="cat" hx-get="/ui/snapshots?plc={{.PLC.ID}}" hx-target="#list" hx-trigger="change">
+    <option value="">все</option>
+    {{range .Cats}}<option>{{.}}</option>{{end}}
   </select>
-</h3>
 
-Категория:
-<select name="cat" hx-get="/ui/snapshots?plc={{.PLC.ID}}" hx-target="#list" hx-trigger="change">
-  <option value="">все</option>
-  {{range .Cats}}<option>{{.}}</option>{{end}}
-</select>
+  <div id="list">{{template "snaplist" .List}}</div>
 
-<div id="list">{{template "snaplist" .List}}</div>
-
-<script src="/htmx.min.js"></script>
+  <script src="/htmx.min.js"></script>
 </body>
+
 </html>
 {{end}}
 
@@ -31,7 +36,7 @@
 {{define "snaplist"}}
 {{if not .}}<p>Слепков этого ПЛК пока нет. Создайте его в Истории кнопкой «📌 Слепок».</p>{{end}}
 <table>
-{{range .}}
+  {{range .}}
   <tr>
     <td><b>{{.Name}}</b>{{if .Category}}<br><span class="cat">{{.Category}}</span>{{end}}</td>
     <td>{{.Range}}<br><small>{{.Dur}}</small></td>
@@ -40,6 +45,6 @@
     <td><small>{{.Created}}<br>{{.Who}}</small></td>
     <td><a href="{{.Link}}">открыть</a></td>
   </tr>
-{{end}}
+  {{end}}
 </table>
 {{end}}

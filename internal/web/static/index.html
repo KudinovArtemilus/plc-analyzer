@@ -16,9 +16,11 @@
     <a href="/signals" id="lnkSignals">Сигналы</a>
     <a href="/history">История</a>
     <a href="/snapshots">Слепки</a>
+    <a href="/events" id="lnkEvents">События</a>
   </h3>
   <div id="plcstatus" hx-get="ui/status" hx-vals='js:{plc: PLC_ID}' hx-trigger="load, every 1s">загрузка статуса…</div>
   <div id="recstatus" hx-get="ui/recstatus" hx-vals='js:{plc: PLC_ID}' hx-trigger="load, every 2s"></div>
+  <div id="alarms" hx-get="ui/alarms" hx-vals='js:{plc: PLC_ID}' hx-trigger="load, every 1s"></div>
 
   <div id="toolbar">
     Окно:
@@ -95,6 +97,7 @@
       const current = PLC_ID || (list[0] ? String(list[0].id) : "");
       sel.value = current;
       document.getElementById("lnkSignals").href = "/signals?plc=" + current;
+      document.getElementById("lnkEvents").href = "/events?plc=" + current;
       sel.onchange = () => { location.href = "/?plc=" + sel.value; };
       return current; // номер ПЛК — под ним запоминается порядок дорожек
     }
@@ -140,9 +143,20 @@
       // Что рисуем: в Live — живые массивы, на Стопе — их копия (снимок)
       let view = { x: gx, y: gy };
 
+      // Дорожки — только для трендов. Аварии и предупреждения на графиках не рисуем:
+      // они видны на панели аварий выше (по ISA-101 — только когда сработали)
       const laneDefs = [];
+      let hiddenAlarms = 0;
       groups.forEach((g, gi) =>
-        g.names.forEach((name, si) => laneDefs.push({ gi, si, name, periodMs: g.period_ms })));
+        g.names.forEach((name, si) => {
+          const kind = (g.kinds && g.kinds[si]) || "trend";
+          if (kind !== "trend") { hiddenAlarms++; return; }
+          laneDefs.push({ gi, si, name, periodMs: g.period_ms });
+        }));
+      if (groups.length && !laneDefs.length) {
+        setStatus("У этого ПЛК только аварии и предупреждения (" + hiddenAlarms +
+          ") — их состояние на панели аварий, графиков нет", false);
+      }
 
       function latestTime() {
         let m = -Infinity;
@@ -435,7 +449,7 @@
       // ---------- Поток данных ----------
 
       const es = new EventSource("api/stream" + plcQ);
-      es.onopen = () => { if (!paused && groups.length) setStatus("Live", false); };
+      es.onopen = () => { if (!paused && laneDefs.length) setStatus("Live", false); };
       es.onerror = () => { if (!paused) setStatus("нет связи с сервером, переподключение…", false); };
 
       es.addEventListener("config", () => {

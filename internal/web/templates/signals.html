@@ -10,7 +10,8 @@
 
 <body>
   <nav><a href="/?plc={{.PLC.ID}}">← Графики</a> <a href="/plcs">ПЛК</a> <b>Сигналы</b> <a
-      href="/history?plc={{.PLC.ID}}">История</a> <a href="/snapshots?plc={{.PLC.ID}}">Слепки</a></nav>
+      href="/history?plc={{.PLC.ID}}">История</a> <a href="/snapshots?plc={{.PLC.ID}}">Слепки</a> <a
+      href="/events?plc={{.PLC.ID}}">События</a></nav>
   <h3>Сигналы ПЛК
     <select onchange="location.href='/signals?plc=' + this.value">
       {{range .PLCs}}<option value="{{.ID}}" {{if eq .ID $.PLC.ID}}selected{{end}}>{{.Name}} ({{.IP}})</option>{{end}}
@@ -18,7 +19,8 @@
     <a href="/plcs">все ПЛК →</a>
   </h3>
   <div class="note">Изменения применяются к опросу автоматически примерно через секунду.
-    Аварии и предупреждения — только BOOL (1 = авария), на графиках по умолчанию не показываются.</div>
+    Аварии и предупреждения — только BOOL (1 = авария). На графиках Live их нет: они появляются
+    на панели аварий, когда сработали, и записываются в <a href="/events?plc={{.PLC.ID}}">журнал событий</a>.</div>
 
   {{template "addform" .Form}}
 

@@ -128,15 +128,21 @@ func (u *unit) run(ctx context.Context) {
 		groups := buildGroups(fresh, rows)
 		gen++
 		dets = u.buildDetectors(ctx, fresh, rows, groups)
+		kindOf := make(map[string]string, len(rows)) // имя сигнала → тип (тренд / авария / предупреждение)
+		for _, r := range rows {
+			kindOf[r.Name] = r.Kind
+		}
 		rings = make([]*buffer.Ring, len(groups))
 		webGroups := make([]web.Group, len(groups))
 		for gi, g := range groups {
 			rings[gi] = buffer.New(int(window / g.Period))
 			names := make([]string, len(g.Signals))
+			kinds := make([]string, len(g.Signals))
 			for i, s := range g.Signals {
 				names[i] = s.Name
+				kinds[i] = kindOf[s.Name]
 			}
-			webGroups[gi] = web.Group{Period: g.Period, Names: names, Ring: rings[gi]}
+			webGroups[gi] = web.Group{Period: g.Period, Names: names, Kinds: kinds, Ring: rings[gi]}
 		}
 		u.rec.SetGroups(gen, groupInfos(groups))
 		u.poller.SetGroups(groups, gen)

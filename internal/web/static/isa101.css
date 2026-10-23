@@ -436,23 +436,9 @@ tr.editing td {
 /* Строка «+ имя» под именем дорожки: цвет и пунктир — как у линии на графике */
 .lane .name .ovl {
   font-size: 11px;
-  display: flex;
-  align-items: center;
   white-space: nowrap;
-}
-
-/* Имя наложенного сигнала сжимается и обрезается многоточием, кнопки — никогда */
-.lane .name .ovl .label {
-  flex: 1;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-left: 3px;
-}
-
-.lane .name .ovl .sample,
-.lane .name .ovl button {
-  flex: none;
 }
 
 .lane .name .ovl .sample {
@@ -465,7 +451,7 @@ tr.editing td {
 
 .lane .name .ovl button {
   padding: 0 3px;
-  margin: 0 2px 0 0;
+  margin: 0 0 0 2px;
   font-size: 10px;
   line-height: 14px;
 }
