@@ -9,12 +9,13 @@ import (
 
 	"github.com/KudinovArtemilus/plc-analyzer/internal/archive"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/buffer"
+	"github.com/KudinovArtemilus/plc-analyzer/internal/events"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/plc"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/store"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/web"
 )
 
-// unit — всё, что работает для одного ПЛК: опрос, буфер Live и запись на диск.
+// unit — всё, что работает для одного ПЛК: опрос, буфер Live, запись на диск и аварии.
 // Внутренности (буферы, номер конфигурации) принадлежат горутине run.
 // Снаружи блоком управляют только через notify и shutdown.
 type unit struct {
@@ -93,7 +94,8 @@ func (u *unit) run(ctx context.Context) {
 
 	gen := 0
 	var rings []*buffer.Ring
-	var lastKey string // «отпечаток» настроек: не изменились — не перестраиваем
+	var dets []*events.Detector // по детектору аварий на группу опроса
+	var lastKey string          // «отпечаток» настроек: не изменились — не перестраиваем
 
 	apply := func() {
 		pl := u.settings()
@@ -125,6 +127,7 @@ func (u *unit) run(ctx context.Context) {
 
 		groups := buildGroups(fresh, rows)
 		gen++
+		dets = u.buildDetectors(ctx, fresh, rows, groups)
 		rings = make([]*buffer.Ring, len(groups))
 		webGroups := make([]web.Group, len(groups))
 		for gi, g := range groups {
@@ -155,11 +158,88 @@ func (u *unit) run(ctx context.Context) {
 			if s.Err == nil && s.Gen == gen {
 				rings[s.Group].Add(buffer.Point{T: s.Time.UnixMilli(), V: s.Values})
 				u.rec.Add(s.Gen, s.Group, s.Time, s.Values)
+				if edges := dets[s.Group].Update(s.Time, s.Values); len(edges) > 0 {
+					u.saveEdges(ctx, edges)
+				}
 			}
+			// При ошибке связи детекторы НЕ трогаем: значения неизвестны, а не «0».
+			// Связь вернётся — сравним с тем, что было до обрыва.
 
 		case <-u.reload:
 			apply()
 		}
+	}
+}
+
+// ---------- Аварии ----------
+
+// buildDetectors — детекторы аварий для новой конфигурации групп.
+// Заодно закрывает в базе активные аварии по сигналам, которые больше не аварии
+// (выключены, удалены, переименованы или сменили тип).
+func (u *unit) buildDetectors(ctx context.Context, pl store.PLC, rows []store.SignalRow,
+	groups []plc.Group) []*events.Detector {
+
+	byName := make(map[string]store.SignalRow, len(rows))
+	for _, r := range rows {
+		byName[r.Name] = r
+	}
+
+	// Аварии, открытые в базе: программу перезапустили или поменяли настройки во время аварии
+	active := map[string]bool{}
+	if open, err := u.st.ActiveEvents(ctx, pl.ID); err != nil {
+		log.Printf("[%s] аварии: не удалось прочитать активные: %v", pl.Name, err)
+	} else {
+		for _, e := range open {
+			active[e.Signal] = true
+		}
+	}
+
+	dets := make([]*events.Detector, len(groups))
+	var watched []string
+	for gi, g := range groups {
+		var bits []events.Bit
+		for i, s := range g.Signals {
+			r := byName[s.Name]
+			if r.Kind != store.KindAlarm && r.Kind != store.KindWarning {
+				continue
+			}
+			bits = append(bits, events.Bit{Index: i, Signal: s.Name, Kind: r.Kind, Message: r.Message})
+			watched = append(watched, s.Name)
+		}
+		dets[gi] = events.NewDetector(bits, active)
+	}
+
+	if n, err := u.st.CloseEventsExcept(ctx, pl.ID, watched, time.Now()); err != nil {
+		log.Printf("[%s] аварии: не удалось закрыть снятые с контроля: %v", pl.Name, err)
+	} else if n > 0 {
+		log.Printf("[%s] аварии: закрыто %d (сигналы сняты с контроля)", pl.Name, n)
+	}
+	if len(watched) > 0 {
+		log.Printf("[%s] аварии: под наблюдением %d битов", pl.Name, len(watched))
+	}
+	return dets
+}
+
+// saveEdges — записать фронты в журнал и в лог программы
+func (u *unit) saveEdges(ctx context.Context, edges []events.Edge) {
+	pl := u.settings()
+	rows := make([]store.EventEdge, len(edges))
+	for i, e := range edges {
+		rows[i] = store.EventEdge{
+			Signal: e.Bit.Signal, Kind: e.Bit.Kind, Message: e.Bit.Message, On: e.On, At: e.At,
+		}
+		what := "АВАРИЯ"
+		if e.Bit.Kind == store.KindWarning {
+			what = "предупреждение"
+		}
+		state := "пришла"
+		if !e.On {
+			state = "ушла"
+		}
+		log.Printf("[%s] %s %s: %s — %s", pl.Name, what, state, e.Bit.Signal, e.Bit.Message)
+	}
+	if err := u.st.SaveEdges(ctx, pl.ID, rows); err != nil {
+		log.Printf("[%s] аварии: не удалось записать в журнал: %v", pl.Name, err)
 	}
 }
 

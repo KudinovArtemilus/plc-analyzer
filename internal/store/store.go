@@ -91,6 +91,20 @@ var migrations = []string{
 	// 1: тип сигнала и текст сообщения
 	`ALTER TABLE signals ADD COLUMN kind    TEXT NOT NULL DEFAULT 'trend';
 	 ALTER TABLE signals ADD COLUMN message TEXT NOT NULL DEFAULT '';`,
+
+	// 2: журнал аварий и предупреждений. Одна строка = одна авария от прихода до ухода;
+	//    went_ms пустое (NULL), пока авария активна.
+	`CREATE TABLE events (
+		id      INTEGER PRIMARY KEY,
+		plc_id  INTEGER NOT NULL REFERENCES plcs(id),
+		signal  TEXT    NOT NULL,
+		kind    TEXT    NOT NULL,
+		message TEXT    NOT NULL,
+		came_ms INTEGER NOT NULL,
+		went_ms INTEGER
+	 );
+	 CREATE INDEX events_open ON events (plc_id, went_ms);
+	 CREATE INDEX events_came ON events (came_ms);`,
 }
 
 func Open(path string) (*Store, error) {
