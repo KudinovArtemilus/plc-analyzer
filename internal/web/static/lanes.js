@@ -249,6 +249,7 @@ function makeOverlays(container, key, onChange) {
             const sample = document.createElement("span");
             sample.className = "sample"; // пунктир — как на графике: различаем не только цветом
             const label = document.createElement("span");
+            label.className = "label";
             label.textContent = "+ " + o.name;
 
             const shared = document.createElement("button");
@@ -263,7 +264,10 @@ function makeOverlays(container, key, onChange) {
             remove.title = "убрать наложение — сигнал вернётся на свою дорожку";
             remove.onclick = () => set(n, null);
 
-            line.append(sample, label, shared, remove);
+            // Кнопки ПЕРЕД именем: длинное имя обрезается многоточием, а кнопки всегда на месте.
+            // (Когда они стояли после имени, длинное имя выталкивало их под график,
+            // и клик доставался графику, а не кнопке.)
+            line.append(sample, shared, remove, label);
             r.querySelector(".name").append(line);
         });
     }

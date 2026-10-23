@@ -436,9 +436,23 @@ tr.editing td {
 /* Строка «+ имя» под именем дорожки: цвет и пунктир — как у линии на графике */
 .lane .name .ovl {
   font-size: 11px;
+  display: flex;
+  align-items: center;
   white-space: nowrap;
+}
+
+/* Имя наложенного сигнала сжимается и обрезается многоточием, кнопки — никогда */
+.lane .name .ovl .label {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-left: 3px;
+}
+
+.lane .name .ovl .sample,
+.lane .name .ovl button {
+  flex: none;
 }
 
 .lane .name .ovl .sample {
@@ -451,7 +465,7 @@ tr.editing td {
 
 .lane .name .ovl button {
   padding: 0 3px;
-  margin: 0 0 0 2px;
+  margin: 0 2px 0 0;
   font-size: 10px;
   line-height: 14px;
 }
@@ -459,4 +473,58 @@ tr.editing td {
 .lane .name .ovl-pick {
   max-width: 125px;
   font-size: 11px;
+}
+
+/* ---------- Аварии: панель на Live и журнал событий ---------- */
+
+/* Панель активных аварий: строки-полосы .bar.bad / .bar.warn, плотнее обычных */
+.alarms {
+  margin-bottom: 6px;
+}
+
+.alarms-head {
+  margin: 2px 0 4px;
+}
+
+.alarms-head b {
+  margin-right: 10px;
+}
+
+.alarms .bar {
+  margin-bottom: 2px;
+}
+
+.ev-meta {
+  font-weight: normal;
+  margin-left: 12px;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+/* Журнал: время — моноширинным, чтобы миллисекунды стояли столбиком */
+td.mono {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Активная авария в журнале — красная строка с толстой полосой слева (не только цвет) */
+tr.ev-alarm td {
+  background: var(--alarm-bg);
+  color: var(--alarm);
+}
+
+tr.ev-alarm td:first-child {
+  box-shadow: inset 6px 0 0 var(--alarm);
+  padding-left: 14px;
+}
+
+tr.ev-warn td {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+
+tr.ev-warn td:first-child {
+  box-shadow: inset 6px 0 0 var(--warn);
+  padding-left: 14px;
 }
