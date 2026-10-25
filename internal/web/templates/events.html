@@ -14,7 +14,9 @@
         <a href="/history{{if .Q.PLCID}}?plc={{.Q.PLCID}}{{end}}">История</a>
         <a href="/snapshots{{if .Q.PLCID}}?plc={{.Q.PLCID}}{{end}}">Слепки</a> <b>События</b>
     </nav>
-    <h3>Журнал аварий и предупреждений</h3>
+    <h3>Журнал аварий и предупреждений
+        <a href="/shelves{{if .Q.PLCID}}?plc={{.Q.PLCID}}{{end}}">шунты →</a>
+    </h3>
 
     <!-- Любое изменение фильтра — новая таблица; и раз в 10 с — сама, чтобы новые аварии появлялись без F5 -->
     <form id="filter" class="panel-form" hx-get="/ui/events" hx-target="#list" hx-trigger="change, every 10s">
@@ -78,21 +80,33 @@
 {{define "alarms"}}
 {{/* Панель активных аварий на Live. Нет аварий — одна спокойная серая строка. */}}
 {{if not .List}}
-<div class="bar ok">Активных аварий нет · <a href="/events?plc={{.PLCID}}">журнал событий</a></div>
+<div class="bar ok">Активных аварий нет · <a href="/events?plc={{.PLCID}}">журнал событий</a>
+    {{template "shelvedinfo" .}}</div>
 {{else}}
 <div class="alarms">
     <div class="alarms-head">
         {{if .Alarms}}<b class="bad">Аварий: {{.Alarms}}</b>{{end}}
         {{if .Warns}}<b class="warn">Предупреждений: {{.Warns}}</b>{{end}}
         · <a href="/events?plc={{.PLCID}}">журнал событий</a>
+        {{template "shelvedinfo" .}}
     </div>
     {{range .List}}
     <div class="bar {{if .Warn}}warn{{else}}bad{{end}}">
         {{if .Warn}}▲ ПРЕДУПРЕЖДЕНИЕ{{else}}■ АВАРИЯ{{end}}: {{.Message}}
         <span class="ev-meta">{{.Signal}} · с {{.Came}} · {{.Dur}}</span>
         <button class="ev-plot" data-sig="{{.Signal}}" title="показать этот бит дорожкой на графике">на график</button>
+        <!-- Форма шунта — в #shelveForm ВНЕ панели: панель обновляется каждую секунду -->
+        <button class="ev-plot" hx-get="/ui/shelve?plc={{$.PLCID}}&sig={{.Signal}}" hx-target="#shelveForm"
+            title="временно убрать с панели долго висящую аварию">шунт</button>
     </div>
     {{end}}
 </div>
 {{end}}
+{{end}}
+
+
+{{define "shelvedinfo"}}
+{{/* Зашунтированные не прячем бесследно: всегда видно, сколько шунтов действует */}}
+{{if .Shelves}}· <a href="/shelves?plc={{.PLCID}}" class="muted">шунтов: {{.Shelves}}{{if .Shelved}}
+    (скрыто активных: {{.Shelved}}){{end}}</a>{{end}}
 {{end}}

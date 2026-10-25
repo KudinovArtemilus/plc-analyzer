@@ -115,6 +115,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /events", s.eventsPage)
 	mux.HandleFunc("GET /ui/events", s.eventsList)
 
+	// Шунты аварий
+	mux.HandleFunc("GET /shelves", s.shelvesPage)
+	mux.HandleFunc("GET /ui/shelve", s.shelveForm)
+	mux.HandleFunc("POST /ui/shelves", s.addShelf)
+	mux.HandleFunc("POST /ui/shelves/{id}/remove", s.removeShelf)
+
 	// ПЛК
 	mux.HandleFunc("GET /plcs", s.plcsPage)
 	mux.HandleFunc("POST /ui/plcs", s.addPLC)

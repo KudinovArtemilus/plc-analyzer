@@ -105,6 +105,21 @@ var migrations = []string{
 	 );
 	 CREATE INDEX events_open ON events (plc_id, went_ms);
 	 CREATE INDEX events_came ON events (came_ms);`,
+
+	// 3: шунтирование аварий — временно убрать с панели долго висящую аварию.
+	//    Шунт действует до until_ms; removed_ms — сняли раньше срока вручную.
+	`CREATE TABLE shelves (
+		id         INTEGER PRIMARY KEY,
+		plc_id     INTEGER NOT NULL REFERENCES plcs(id),
+		signal     TEXT    NOT NULL,
+		reason     TEXT    NOT NULL,
+		who        TEXT    NOT NULL,
+		from_ms    INTEGER NOT NULL,
+		until_ms   INTEGER NOT NULL,
+		removed_ms INTEGER,
+		removed_by TEXT    NOT NULL DEFAULT ''
+	 );
+	 CREATE INDEX shelves_plc ON shelves (plc_id, until_ms);`,
 }
 
 func Open(path string) (*Store, error) {

@@ -1,0 +1,95 @@
+{{define "shelves"}}
+<!doctype html>
+<html lang="ru">
+
+<head>
+    <meta charset="utf-8">
+    <title>Шунты — PLC Analyzer</title>
+    <link rel="stylesheet" href="/isa101.css">
+</head>
+
+<body>
+    <nav><a href="/?plc={{.PLC.ID}}">← Графики</a> <a href="/plcs">ПЛК</a> <a
+            href="/signals?plc={{.PLC.ID}}">Сигналы</a>
+        <a href="/history?plc={{.PLC.ID}}">История</a> <a href="/snapshots?plc={{.PLC.ID}}">Слепки</a>
+        <a href="/events?plc={{.PLC.ID}}">События</a> <b>Шунты</b>
+    </nav>
+    <h3>Шунты аварий ПЛК
+        <select onchange="location.href='/shelves?plc=' + this.value">
+            {{range .PLCs}}<option value="{{.ID}}" {{if eq .ID $.PLC.ID}}selected{{end}}>{{.Name}} ({{.IP}})</option>
+            {{end}}
+        </select>
+    </h3>
+    <div class="note">Зашунтированная авария не показывается на панели аварий, но продолжает записываться
+        в журнал событий. Когда срок истекает, она сама возвращается на панель. Поставить шунт — кнопкой
+        «шунт» на полосе аварии на странице графиков.</div>
+
+    <div id="shelflist">{{template "shelflist" .Table}}</div>
+
+    <script src="/htmx.min.js"></script>
+</body>
+
+</html>
+{{end}}
+
+
+{{define "shelflist"}}
+{{if .Err}}<div class="bar bad">{{.Err}}</div>{{end}}
+{{if not .List}}<p>За последние 30 дней шунтов не было.</p>{{else}}
+<table>
+    <thead>
+        <tr>
+            <th>Сигнал</th>
+            <th>Причина</th>
+            <th>Поставил</th>
+            <th>С</th>
+            <th>До</th>
+            <th>Состояние</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .List}}
+        <tr class="{{if not .Active}}off{{end}}">
+            <td><b>{{.Signal}}</b>{{if .Message}}<br><small>{{.Message}}</small>{{end}}</td>
+            <td class="comment">{{.Reason}}</td>
+            <td><small>{{.Who}}</small></td>
+            <td class="mono">{{.From}}</td>
+            <td class="mono">{{.Until}}</td>
+            <td>{{.State}}</td>
+            <td>{{if .Active}}<button hx-post="/ui/shelves/{{.ID}}/remove?plc={{$.PLCID}}" hx-target="#shelflist"
+                    hx-confirm="Снять шунт с {{.Signal}}? Авария сразу вернётся на панель.">снять</button>{{end}}</td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+{{end}}
+{{end}}
+
+
+{{define "shelveform"}}
+{{/* Форма появляется на странице графиков под панелью аварий — вне панели,
+потому что панель перерисовывается каждую секунду и стёрла бы недописанную причину. */}}
+<form class="panel-form shelve" hx-post="/ui/shelves" hx-target="#shelveForm">
+    <input type="hidden" name="plc" value="{{.PLCID}}">
+    <input type="hidden" name="sig" value="{{.Signal}}">
+    <b>Зашунтировать</b> {{.Signal}}{{if .Message}} — {{.Message}}{{end}}<br>
+    Причина: <input name="reason" value="{{.Reason}}" size="40" required
+        placeholder="например: датчик неисправен, ждём замену">
+    &nbsp; на:
+    <select name="hours">
+        {{range .Options}}<option value="{{.Hours}}" {{if eq .Hours $.Hours}}selected{{end}}>{{.Title}}</option>{{end}}
+    </select>
+    <button type="submit">Зашунтировать</button>
+    <button type="button" onclick="this.closest('#shelveForm').innerHTML = ''">Отмена</button>
+    {{if .Err}}<span class="err">{{.Err}}</span>{{end}}
+</form>
+{{end}}
+
+
+{{define "shelvedone"}}
+<div class="note">{{.Signal}} зашунтирована до {{.Until}}. Снять раньше срока —
+    в <a href="/shelves?plc={{.PLCID}}">списке шунтов</a>.
+    <button type="button" onclick="this.closest('#shelveForm').innerHTML = ''">OK</button>
+</div>
+{{end}}

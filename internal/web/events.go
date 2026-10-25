@@ -59,17 +59,38 @@ func fmtEventTime(t, ref time.Time) string {
 // ---------- Панель активных аварий на Live ----------
 
 func (s *Server) alarmsPanel(w http.ResponseWriter, r *http.Request) {
-	list, err := s.Store.ActiveEvents(r.Context(), s.reqPLCID(r))
+	plcID := s.reqPLCID(r)
+	now := time.Now()
+	all, err := s.Store.ActiveEvents(r.Context(), plcID)
 	if err != nil {
 		http.Error(w, friendly(err).Error(), http.StatusInternalServerError)
 		return
+	}
+	shelves, err := s.Store.ActiveShelves(r.Context(), plcID, now)
+	if err != nil {
+		http.Error(w, friendly(err).Error(), http.StatusInternalServerError)
+		return
+	}
+	shelved := make(map[string]bool, len(shelves))
+	for _, sh := range shelves {
+		shelved[sh.Signal] = true
+	}
+
+	// Зашунтированные с панели убираем (в журнал они всё равно пишутся) — только считаем
+	var list []store.Event
+	hidden := 0
+	for _, e := range all {
+		if shelved[e.Signal] {
+			hidden++
+			continue
+		}
+		list = append(list, e)
 	}
 	// Аварии выше предупреждений; внутри — по времени прихода (Stable сохраняет порядок из базы)
 	sort.SliceStable(list, func(i, j int) bool {
 		return list[i].Kind == store.KindAlarm && list[j].Kind != store.KindAlarm
 	})
 
-	now := time.Now()
 	views := make([]eventView, len(list))
 	alarms, warns := 0, 0
 	for i, e := range list {
@@ -81,7 +102,8 @@ func (s *Server) alarmsPanel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	render(w, "alarms", map[string]any{
-		"List": views, "Alarms": alarms, "Warns": warns, "PLCID": s.reqPLCID(r),
+		"List": views, "Alarms": alarms, "Warns": warns, "PLCID": plcID,
+		"Shelved": hidden, "Shelves": len(shelves),
 	})
 }
 
