@@ -30,9 +30,11 @@
     <button data-win="600">10 мин</button>
     <button id="btnStop">⏸ Стоп</button>
     <button id="btnOrder" title="вернуть дорожки в исходный порядок">↺ исходный порядок</button>
+    <button id="btnAlarms" title="какие аварии и предупреждения показать дорожками" hidden>■ Аварии на графике</button>
     <span id="hint">ЛКМ — курсор A · ПКМ — курсор B · выделение — зум · Esc — убрать курсоры · ⠿ или ▲▼ у имени —
       порядок дорожек · ⊕ — наложить второй сигнал</span>
   </div>
+  <div id="alarmPick" class="panel-form" hidden></div>
   <div id="statusRow">
     <span id="status">подключение…</span>
     <span id="hoverTime"></span>
@@ -54,6 +56,7 @@
 
     const MAX_S = 600;
     const LANE_H = 80;
+    const BIT_H = 44; // дорожка аварийного бита ниже: там только 0 и 1
     const NAME_W = 130;
     const VAL_W = 110;
     const COLOR_A = ISA.cursorA;
@@ -143,20 +146,75 @@
       // Что рисуем: в Live — живые массивы, на Стопе — их копия (снимок)
       let view = { x: gx, y: gy };
 
-      // Дорожки — только для трендов. Аварии и предупреждения на графиках не рисуем:
-      // они видны на панели аварий выше (по ISA-101 — только когда сработали)
+      // Аварии и предупреждения по умолчанию на графиках не рисуем: они видны на панели аварий
+      // (ISA-101 — только когда сработали). Но любую можно вывести дорожкой — выбор запоминается.
+      const shownKey = "plca:alarmlanes:" + plcKey;
+      let shown = new Set();
+      try { shown = new Set(JSON.parse(localStorage.getItem(shownKey) || "[]")); } catch (e) { }
+
       const laneDefs = [];
-      let hiddenAlarms = 0;
+      const alarmSignals = []; // все аварии и предупреждения ПЛК — для списка выбора
       groups.forEach((g, gi) =>
         g.names.forEach((name, si) => {
           const kind = (g.kinds && g.kinds[si]) || "trend";
-          if (kind !== "trend") { hiddenAlarms++; return; }
-          laneDefs.push({ gi, si, name, periodMs: g.period_ms });
+          if (kind !== "trend") {
+            alarmSignals.push({ name, kind });
+            if (!shown.has(name)) return;
+          }
+          laneDefs.push({ gi, si, name, kind, periodMs: g.period_ms });
         }));
       if (groups.length && !laneDefs.length) {
-        setStatus("У этого ПЛК только аварии и предупреждения (" + hiddenAlarms +
-          ") — их состояние на панели аварий, графиков нет", false);
+        setStatus("У этого ПЛК только аварии и предупреждения (" + alarmSignals.length +
+          ") — их состояние на панели аварий; дорожкой — кнопка «■ Аварии на графике»", false);
       }
+
+      // setShown — показать / убрать аварию дорожкой. Состав дорожек задаётся при построении
+      // страницы, поэтому применяем перезагрузкой: поток заново отдаст накопленные 10 минут.
+      // На Стопе — при возврате в Live, чтобы не потерять снимок (так же, как при смене сигналов).
+      function setShown(name, on) {
+        if (on) shown.add(name); else shown.delete(name);
+        try { localStorage.setItem(shownKey, JSON.stringify([...shown])); } catch (e) { }
+        if (paused) {
+          configChanged = true;
+          setStatus("СТОП — выбор аварий применится при возврате в Live", true);
+        } else {
+          location.reload();
+        }
+      }
+
+      // Список выбора: галочка у каждой аварии и предупреждения
+      const btnAlarms = document.getElementById("btnAlarms");
+      const pickEl = document.getElementById("alarmPick");
+      if (alarmSignals.length) {
+        btnAlarms.hidden = false;
+        const n = alarmSignals.filter(a => shown.has(a.name)).length;
+        btnAlarms.textContent = "■ Аварии на графике" + (n ? " (" + n + ")" : "");
+        btnAlarms.onclick = () => { pickEl.hidden = !pickEl.hidden; };
+        alarmSignals.forEach(a => {
+          const lb = document.createElement("label");
+          lb.className = "pick-item";
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = shown.has(a.name);
+          cb.onchange = () => setShown(a.name, cb.checked);
+          lb.append(cb, " " + (a.kind === "warning" ? "▲ " : "■ ") + a.name);
+          pickEl.append(lb);
+        });
+      }
+
+      // Кнопка «на график» на панели аварий. Панель обновляется раз в секунду, поэтому
+      // слушаем щелчки на ней целиком (делегирование), а не на каждой кнопке.
+      document.getElementById("alarms").addEventListener("click", e => {
+        const btn = e.target.closest("button[data-sig]");
+        if (btn) setShown(btn.dataset.sig, true);
+      });
+      // Уже показанные дорожкой — кнопку прячем: сейчас и после каждого обновления панели
+      const markPanel = () => document.querySelectorAll("#alarms button[data-sig]")
+        .forEach(b => { b.hidden = shown.has(b.dataset.sig); });
+      markPanel();
+      document.body.addEventListener("htmx:afterSwap", e => {
+        if (e.detail.target.id === "alarms") markPanel();
+      });
 
       function latestTime() {
         let m = -Infinity;
@@ -303,9 +361,23 @@
         const o = ovLane(l);
         const ov = o ? { color: overlayColor(l.idx, o.idx), shared: overlays.get(l.name).shared } : null;
 
+        // Аварийный бит: ступенька 0/1, закрашено там, где 1; ось Y — только «0» и «1»
+        const isBit = l.kind !== "trend";
+        const axes = isaAxes(false, ov && !ov.shared ? ov.color : null);
+        let series = laneSeries(colors[l.idx % colors.length], ov);
+        if (isBit) {
+          axes[1] = { ...axes[1], splits: () => [0, 1] };
+          series[1] = {
+            stroke: ISA.alarmLine, width: 1,
+            fill: l.kind === "warning" ? ISA.warnFill : ISA.alarmFill,
+            paths: uPlot.paths.stepped({ align: 1 }), // держим значение до следующей точки
+          };
+        }
+
         const u = new uPlot({
           width: plotWidth(),
-          height: LANE_H,
+          height: l.h,
+          scales: isBit ? { y: { range: [-0.15, 1.15] } } : {},
           legend: { show: false },
           cursor: {
             sync: { key: sync.key },
@@ -331,8 +403,8 @@
             }],
           },
           // подписи времени — в отдельной строке под дорожками; справа — шкала наложенного сигнала
-          axes: isaAxes(false, ov && !ov.shared ? ov.color : null),
-          series: laneSeries(colors[l.idx % colors.length], ov),
+          axes,
+          series,
         }, laneData(l), l.plotEl);
 
         u.over.addEventListener("click", e => {
@@ -362,18 +434,32 @@
         nameEl.className = "name";
         valEl.className = "val";
 
+        const isBit = d.kind !== "trend";
         const nm = document.createElement("div");
-        nm.textContent = d.name;
+        // \u00a0 — неразрывный пробел: значок не отрывается от имени на отдельную строку
+        nm.textContent = (isBit ? (d.kind === "warning" ? "▲\u00a0" : "■\u00a0") : "") + d.name;
         const pr = document.createElement("div");
         pr.className = "period";
-        pr.textContent = fmtPeriod(d.periodMs);
+        pr.textContent = (isBit ? (d.kind === "warning" ? "предупр. · " : "авария · ") : "") + fmtPeriod(d.periodMs);
         nameEl.append(nm, pr);
         nameEl.title = d.name + " — каждые " + fmtPeriod(d.periodMs);
+        if (isBit) {
+          row.classList.add("bit");
+          const hide = document.createElement("button");
+          hide.className = "bit-hide";
+          hide.textContent = "✕";
+          hide.title = "убрать с графика (останется на панели аварий)";
+          hide.onclick = () => setShown(d.name, false);
+          pr.append(" ", hide);
+        }
 
         row.append(nameEl, plotEl, valEl);
         lanesEl.appendChild(row);
 
-        return { idx: i, gi: d.gi, si: d.si, name: d.name, row, plotEl, valEl, u: null };
+        return {
+          idx: i, gi: d.gi, si: d.si, name: d.name, kind: d.kind, h: isBit ? BIT_H : LANE_H,
+          row, plotEl, valEl, u: null,
+        };
       });
       lanes.forEach(makePlot);
 
@@ -442,7 +528,7 @@
       });
 
       window.addEventListener("resize", () => {
-        lanes.forEach(l => l.u.setSize({ width: plotWidth(), height: LANE_H }));
+        lanes.forEach(l => l.u.setSize({ width: plotWidth(), height: l.h }));
         if (axisU) axisU.setSize({ width: plotWidth(), height: 34 });
       });
 

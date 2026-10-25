@@ -53,7 +53,8 @@ func TestEventTemplates(t *testing.T) {
 			"Перегрев &lt;масла&gt;"}}, // текст пользователя экранируется — html/template
 		{"eventlist", []eventView{}, []string{"событий нет"}},
 		{"alarms", map[string]any{"List": list, "Alarms": 1, "Warns": 1, "PLCID": int64(2)},
-			[]string{"Аварий: 1", "Предупреждений: 1", "bar bad", "bar warn", "/events?plc=2"}},
+			[]string{"Аварий: 1", "Предупреждений: 1", "bar bad", "bar warn", "/events?plc=2",
+				`data-sig="AL1"`}}, // кнопка «на график» знает свой сигнал
 		{"alarms", map[string]any{"List": []eventView{}, "PLCID": int64(2)}, []string{"Активных аварий нет"}},
 		{"events", map[string]any{
 			"Q":    eventsQuery{PLCID: 2, Day: "2026-10-23", Kind: "alarm"},

@@ -436,9 +436,23 @@ tr.editing td {
 /* Строка «+ имя» под именем дорожки: цвет и пунктир — как у линии на графике */
 .lane .name .ovl {
   font-size: 11px;
+  display: flex;
+  align-items: center;
   white-space: nowrap;
+}
+
+/* Имя наложенного сигнала сжимается и обрезается многоточием, кнопки — никогда */
+.lane .name .ovl .label {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-left: 3px;
+}
+
+.lane .name .ovl .sample,
+.lane .name .ovl button {
+  flex: none;
 }
 
 .lane .name .ovl .sample {
@@ -451,7 +465,7 @@ tr.editing td {
 
 .lane .name .ovl button {
   padding: 0 3px;
-  margin: 0 0 0 2px;
+  margin: 0 2px 0 0;
   font-size: 10px;
   line-height: 14px;
 }
@@ -513,4 +527,30 @@ tr.ev-warn td {
 tr.ev-warn td:first-child {
   box-shadow: inset 6px 0 0 var(--warn);
   padding-left: 14px;
+}
+
+/* ---------- Аварийные биты дорожками (27c) ---------- */
+
+/* Список выбора аварий под панелью инструментов */
+#alarmPick .pick-item {
+  display: inline-block;
+  min-width: 220px;
+  margin: 2px 10px 2px 0;
+}
+
+/* Кнопка «на график» на полосе аварии — справа, обычным шрифтом */
+.bar .ev-plot {
+  float: right;
+  font-size: 12px;
+  font-weight: normal;
+  padding: 0 6px;
+  margin: 0;
+}
+
+/* Дорожка бита: ✕ рядом с подписью «авария · 100 мс» */
+.lane.bit .bit-hide {
+  padding: 0 3px;
+  font-size: 10px;
+  line-height: 13px;
+  margin: 0;
 }

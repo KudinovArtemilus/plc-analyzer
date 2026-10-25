@@ -90,6 +90,7 @@
     <div class="bar {{if .Warn}}warn{{else}}bad{{end}}">
         {{if .Warn}}▲ ПРЕДУПРЕЖДЕНИЕ{{else}}■ АВАРИЯ{{end}}: {{.Message}}
         <span class="ev-meta">{{.Signal}} · с {{.Came}} · {{.Dur}}</span>
+        <button class="ev-plot" data-sig="{{.Signal}}" title="показать этот бит дорожкой на графике">на график</button>
     </div>
     {{end}}
 </div>
