@@ -165,7 +165,9 @@
             alarmSignals.push({ name, kind });
             if (!shown.has(name)) return;
           }
-          laneDefs.push({ gi, si, name, kind, periodMs: g.period_ms });
+          // bool: бит (0/1) или целое число — код ошибки; старый сервер без bits — считаем битом
+          const bool = !g.bits || g.bits[si] !== false;
+          laneDefs.push({ gi, si, name, kind, bool, periodMs: g.period_ms });
         }));
       if (groups.length && !laneDefs.length) {
         setStatus("У этого ПЛК только аварии и предупреждения (" + alarmSignals.length +
@@ -424,12 +426,13 @@
         const o = ovLane(l);
         const ov = o ? { color: overlayColor(l.idx, o.idx), shared: overlays.get(l.name).shared } : null;
 
-        // Аварийный бит: ступенька 0/1, закрашено там, где 1; ось Y — только «0» и «1»
+        // Авария: ступенька, закрашено там, где не 0. У бита ось Y — только «0» и «1»;
+        // у кода ошибки шкала своя — по значениям кодов
         const isBit = l.kind !== "trend";
         const axes = isaAxes(false, ov && !ov.shared ? ov.color : null);
         let series = laneSeries(colors[l.idx % colors.length], ov);
         if (isBit) {
-          axes[1] = { ...axes[1], splits: () => [0, 1] };
+          if (l.bool) axes[1] = { ...axes[1], splits: () => [0, 1] };
           series[1] = {
             stroke: ISA.alarmLine, width: 1,
             fill: l.kind === "warning" ? ISA.warnFill : ISA.alarmFill,
@@ -440,7 +443,7 @@
         const u = new uPlot({
           width: plotWidth(),
           height: l.h,
-          scales: isBit ? { y: { range: [-0.15, 1.15] } } : {},
+          scales: isBit && l.bool ? { y: { range: [-0.15, 1.15] } } : {},
           legend: { show: false },
           cursor: {
             sync: { key: sync.key },
@@ -520,8 +523,8 @@
         lanesEl.appendChild(row);
 
         return {
-          idx: i, gi: d.gi, si: d.si, name: d.name, kind: d.kind, h: isBit ? BIT_H : LANE_H,
-          row, plotEl, valEl, u: null,
+          idx: i, gi: d.gi, si: d.si, name: d.name, kind: d.kind, bool: d.bool, h: isBit ? BIT_H : LANE_H,
+          row, plotEl, valEl, u: null
         };
       });
       lanes.forEach(makePlot);

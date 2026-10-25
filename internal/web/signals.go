@@ -238,8 +238,10 @@ func signalFromForm(r *http.Request) (store.SignalRow, error) {
 func checkSignal(row *store.SignalRow) error {
 	// Аварии и предупреждения — дискретные, и человеку нужен понятный текст
 	if row.Kind != store.KindTrend {
-		if row.Type != "BOOL" {
-			return errors.New("авария и предупреждение — только BOOL (адрес вида DB100.DBX0.0)")
+		// BOOL — бит аварии; целое число — номер ошибки (0 — норма). REAL — нет:
+		// у дробного «не ноль» не означает аварию (0.0001 от шума — уже не 0)
+		if row.Type == "REAL" {
+			return errors.New("авария и предупреждение — BOOL (бит) или целое число с кодом ошибки (INT, WORD, DINT…), но не REAL")
 		}
 		if row.Message == "" {
 			return errors.New("для аварии и предупреждения укажите текст сообщения")

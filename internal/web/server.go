@@ -180,11 +180,13 @@ func (s *Server) groups(w http.ResponseWriter, r *http.Request) {
 		PeriodMs int64    `json:"period_ms"`
 		Names    []string `json:"names"`
 		Kinds    []string `json:"kinds"` // Live по умолчанию прячет аварии и предупреждения
+		Bits     []bool   `json:"bits"`  // бит или число: у кода ошибки на дорожке не только 0 и 1
 	}
 	c := s.config(s.reqPLCID(r))
 	out := make([]groupJSON, len(c.Groups))
 	for i, g := range c.Groups {
-		out[i] = groupJSON{PeriodMs: g.Period.Milliseconds(), Names: g.Names, Kinds: g.Kinds}
+
+		out[i] = groupJSON{PeriodMs: g.Period.Milliseconds(), Names: g.Names, Kinds: g.Kinds, Bits: g.Bits}
 	}
 	writeJSON(w, out)
 }
