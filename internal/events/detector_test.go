@@ -62,8 +62,17 @@ func TestDetectorAlarmAtStart(t *testing.T) {
 	bits := []Bit{{Index: 0, Signal: "AL1"}}
 	d := NewDetector(bits, nil)
 	// При запуске авария уже есть — сообщаем «пришла», чтобы она попала в журнал и на панель
-	if got := edgesText(d.Update(time.Now(), []float64{1})); got != "AL1+" {
-		t.Fatalf("авария при запуске: %q, ожидалось AL1+", got)
+	got := d.Update(time.Now(), []float64{1})
+	if edgesText(got) != "AL1+" {
+		t.Fatalf("авария при запуске: %q, ожидалось AL1+", edgesText(got))
+	}
+	if !got[0].Initial {
+		t.Fatal("авария при запуске должна быть помечена Initial")
+	}
+	// Ушла и пришла снова — это уже настоящий фронт
+	d.Update(time.Now(), []float64{0})
+	if again := d.Update(time.Now(), []float64{1}); again[0].Initial {
+		t.Fatal("фронт 0→1 после запуска не должен быть Initial")
 	}
 }
 

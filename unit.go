@@ -94,8 +94,33 @@ func (u *unit) run(ctx context.Context) {
 
 	gen := 0
 	var rings []*buffer.Ring
-	var dets []*events.Detector // по детектору аварий на группу опроса
-	var lastKey string          // «отпечаток» настроек: не изменились — не перестраиваем
+	var dets []*events.Detector   // по детектору аварий на группу опроса
+	var infos []archive.GroupInfo // описание групп для файлов .pla (и слепков по аварии)
+	snap := &events.Avalanche{Before: snapBefore, After: snapAfter, Max: snapMax}
+	var snapWG sync.WaitGroup // записи слепков, которые ещё идут (дождаться при остановке)
+
+	// writeSnap — собрать слепок из буфера Live сейчас (в горутине run, где живут буферы),
+	// а записать на диск — в отдельной горутине, чтобы не задерживать опрос
+	writeSnap := func(w *events.Window) {
+		nsig := make([]int, len(infos))
+		for gi, g := range infos {
+			nsig[gi] = len(g.Signals)
+		}
+		chunks := ringChunks(rings, nsig, w.From, w.To)
+		if len(chunks) == 0 {
+			return
+		}
+		pl, g, gi := u.settings(), gen, infos
+		snapWG.Add(1)
+		go func() {
+			defer snapWG.Done()
+			// WithoutCancel: при остановке программы слепок всё равно дописывается до конца
+			saveAlarmSnapshot(context.WithoutCancel(ctx), u.st, pl, g, gi, chunks, w)
+		}()
+	}
+	snapTick := time.NewTicker(time.Second)
+	defer snapTick.Stop()
+	var lastKey string // «отпечаток» настроек: не изменились — не перестраиваем
 
 	apply := func() {
 		pl := u.settings()
@@ -144,7 +169,8 @@ func (u *unit) run(ctx context.Context) {
 			}
 			webGroups[gi] = web.Group{Period: g.Period, Names: names, Kinds: kinds, Ring: rings[gi]}
 		}
-		u.rec.SetGroups(gen, groupInfos(groups))
+		infos = groupInfos(groups)
+		u.rec.SetGroups(gen, infos)
 		u.poller.SetGroups(groups, gen)
 		if u.onConfig != nil {
 			u.onConfig(gen, webGroups)
@@ -156,8 +182,9 @@ func (u *unit) run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			<-pollDone // соединение с ПЛК закрыто
-			<-recDone  // данные дописаны на диск
+			<-pollDone    // соединение с ПЛК закрыто
+			<-recDone     // данные дописаны на диск
+			snapWG.Wait() // слепки по аварии дописаны
 			return
 
 		case s := <-samples:
@@ -166,6 +193,9 @@ func (u *unit) run(ctx context.Context) {
 				u.rec.Add(s.Gen, s.Group, s.Time, s.Values)
 				if edges := dets[s.Group].Update(s.Time, s.Values); len(edges) > 0 {
 					u.saveEdges(ctx, edges)
+					for _, w := range u.snapEdges(ctx, snap, edges) {
+						writeSnap(w)
+					}
 				}
 			}
 			// При ошибке связи детекторы НЕ трогаем: значения неизвестны, а не «0».
@@ -173,6 +203,11 @@ func (u *unit) run(ctx context.Context) {
 
 		case <-u.reload:
 			apply()
+
+		case now := <-snapTick.C:
+			if w := snap.Due(now, snapSettle); w != nil {
+				writeSnap(w)
+			}
 		}
 	}
 }
@@ -247,6 +282,37 @@ func (u *unit) saveEdges(ctx context.Context, edges []events.Edge) {
 	if err := u.st.SaveEdges(ctx, pl.ID, rows); err != nil {
 		log.Printf("[%s] аварии: не удалось записать в журнал: %v", pl.Name, err)
 	}
+}
+
+// snapEdges — какие из фронтов запускают слепок по аварии: только «пришла», только аварии
+// (не предупреждения), не зашунтированные и не «висевшие при запуске». Возвращает слепки,
+// которые пришлось закрыть досрочно (лавина стала длиннее snapMax).
+func (u *unit) snapEdges(ctx context.Context, snap *events.Avalanche, edges []events.Edge) []*events.Window {
+	var cand []events.Edge
+	for _, e := range edges {
+		if e.On && !e.Initial && e.Bit.Kind == store.KindAlarm {
+			cand = append(cand, e)
+		}
+	}
+	if len(cand) == 0 {
+		return nil
+	}
+	shelved := map[string]bool{}
+	if list, err := u.st.ActiveShelves(ctx, u.settings().ID, time.Now()); err == nil {
+		for _, sh := range list {
+			shelved[sh.Signal] = true
+		}
+	}
+	var done []*events.Window
+	for _, e := range cand {
+		if shelved[e.Bit.Signal] {
+			continue
+		}
+		if w := snap.Add(e); w != nil {
+			done = append(done, w)
+		}
+	}
+	return done
 }
 
 // ---------- Помощники (раньше жили в main.go) ----------

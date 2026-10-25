@@ -20,6 +20,9 @@ type Edge struct {
 	Bit Bit
 	On  bool
 	At  time.Time
+	// Initial — «пришла» без настоящего фронта 0→1: бит был 1 уже при запуске.
+	// В журнал такая авария пишется, а автоматический слепок по ней не нужен — данных «до» нет.
+	Initial bool
 }
 
 // Состояние бита. unknown — ещё не видели ни одного значения (только что запустились).
@@ -73,7 +76,7 @@ func (d *Detector) Update(at time.Time, values []float64) []Edge {
 
 		switch {
 		case now == on && prev != on:
-			edges = append(edges, Edge{Bit: b, On: true, At: at})
+			edges = append(edges, Edge{Bit: b, On: true, At: at, Initial: prev == unknown})
 		case now == off && prev == on:
 			edges = append(edges, Edge{Bit: b, On: false, At: at})
 		}
