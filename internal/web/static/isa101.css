@@ -610,3 +610,13 @@ table.stats td.num {
   margin: 4px 0 0;
   font-size: 12px;
 }
+
+
+/* ---------- Нормы (28c) ---------- */
+
+table.limits td.num {
+  text-align: right;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

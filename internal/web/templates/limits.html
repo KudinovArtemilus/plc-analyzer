@@ -1,0 +1,98 @@
+{{define "limits"}}
+<!doctype html>
+<html lang="ru">
+
+<head>
+    <meta charset="utf-8">
+    <title>Нормы — PLC Analyzer</title>
+    <link rel="stylesheet" href="/isa101.css">
+</head>
+
+<body>
+    <nav><a href="/?plc={{.PLC.ID}}">← Графики</a> <a href="/plcs">ПЛК</a>
+        <a href="/signals?plc={{.PLC.ID}}">Сигналы</a> <b>Нормы</b>
+        <a href="/history?plc={{.PLC.ID}}">История</a> <a href="/snapshots?plc={{.PLC.ID}}">Слепки</a>
+        <a href="/events?plc={{.PLC.ID}}">События</a>
+    </nav>
+    <h3>Нормы аналоговых сигналов
+        <select onchange="location.href='/limits?plc=' + this.value">
+            {{range .PLCs}}<option value="{{.ID}}" {{if eq .ID $.PLC.ID}}selected{{end}}>{{.Name}} ({{.IP}})</option>
+            {{end}}
+        </select>
+    </h3>
+    <div class="note">Выход за норму записывается в <a href="/events?plc={{.PLC.ID}}">журнал событий</a> и
+        показывается на панели аварий — как аварийный бит. Пустое поле — границы нет.
+        <b>Зона возврата</b>: норма восстановится, только когда значение вернётся внутрь на эту величину
+        (без неё сигнал, дрожащий у границы, даёт десятки событий в минуту).
+        <b>Скачок</b> — изменение больше заданного за указанное время, в любую сторону.
+        Нарушение с типом «авария» ещё и сохраняет автоматический слепок.
+    </div>
+
+    {{if not .List}}<p>У этого ПЛК нет аналоговых сигналов-трендов.</p>{{else}}
+    <table class="limits">
+        <thead>
+            <tr>
+                <th>Сигнал</th>
+                <th>Ниже —</th>
+                <th>Выше —</th>
+                <th>Возврат</th>
+                <th>Скачок</th>
+                <th>за, мс</th>
+                <th>Тип</th>
+                <th>Нормы</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .List}}{{template "limitrow" .}}{{end}}
+        </tbody>
+    </table>
+    {{end}}
+
+    <script src="/htmx.min.js"></script>
+</body>
+
+</html>
+{{end}}
+
+
+{{define "limitrow"}}
+<tr id="lim-{{.Sig.ID}}" class="{{if not .Sig.Enabled}}off{{end}}">
+    <td><b>{{.Sig.Name}}</b>{{if .Sig.Unit}}, <small>{{.Sig.Unit}}</small>{{end}}
+        {{if .Sig.Message}}<br><small class="muted">{{.Sig.Message}}</small>{{end}}</td>
+    <td class="num">{{.Lo}}</td>
+    <td class="num">{{.Hi}}</td>
+    <td class="num">{{if .Has}}{{.Hyst}}{{end}}</td>
+    <td class="num">{{.Jump}}</td>
+    <td class="num">{{if .Jump}}{{.JumpMs}}{{end}}</td>
+    <td>{{if .Has}}{{kindTitle .Kind}}{{end}}</td>
+    <td class="{{if not .Has}}muted{{end}}">{{.Descr}}</td>
+    <td><button hx-get="/ui/limits/{{.Sig.ID}}/edit" hx-target="closest tr" hx-swap="outerHTML">изменить</button>
+    </td>
+</tr>
+{{end}}
+
+
+{{define "limitedit"}}
+<tr id="lim-{{.Sig.ID}}" class="editing">
+    <td><b>{{.Sig.Name}}</b>{{if .Sig.Unit}}, <small>{{.Sig.Unit}}</small>{{end}}</td>
+    <td><input name="lo" value="{{.Lo}}" size="6" placeholder="нет"></td>
+    <td><input name="hi" value="{{.Hi}}" size="6" placeholder="нет"></td>
+    <td><input name="hyst" value="{{.Hyst}}" size="4" placeholder="0"></td>
+    <td><input name="jump" value="{{.Jump}}" size="5" placeholder="нет"></td>
+    <td><input name="jump_ms" value="{{.JumpMs}}" size="5"></td>
+    <td>
+        <select name="kind">
+            <option value="warning" {{if eq .Kind "warning" }}selected{{end}}>предупреждение</option>
+            <option value="alarm" {{if eq .Kind "alarm" }}selected{{end}}>авария</option>
+        </select>
+    </td>
+    <td><small class="muted">все поля пустые — нормы сняты</small></td>
+    <td>
+        <button hx-put="/ui/limits/{{.Sig.ID}}" hx-include="closest tr" hx-target="closest tr"
+            hx-swap="outerHTML">сохранить</button>
+        <button hx-get="/ui/limits/{{.Sig.ID}}" hx-target="closest tr" hx-swap="outerHTML">отмена</button>
+        {{if .Err}}<div class="err">{{.Err}}</div>{{end}}
+    </td>
+</tr>
+{{end}}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -94,8 +96,9 @@ func (u *unit) run(ctx context.Context) {
 
 	gen := 0
 	var rings []*buffer.Ring
-	var dets []*events.Detector   // по детектору аварий на группу опроса
-	var infos []archive.GroupInfo // описание групп для файлов .pla (и слепков по аварии)
+	var dets []*events.Detector         // по детектору аварий на группу опроса
+	var limDets []*events.LimitDetector // по детектору норм на группу опроса
+	var infos []archive.GroupInfo       // описание групп для файлов .pla (и слепков по аварии)
 	snap := &events.Avalanche{Before: snapBefore, After: snapAfter, Max: snapMax}
 	var snapWG sync.WaitGroup // записи слепков, которые ещё идут (дождаться при остановке)
 
@@ -134,9 +137,14 @@ func (u *unit) run(ctx context.Context) {
 			log.Printf("[%s] не удалось прочитать сигналы: %v", pl.Name, err)
 			return
 		}
+		lims, err := u.st.Limits(ctx, pl.ID)
+		if err != nil {
+			log.Printf("[%s] не удалось прочитать нормы: %v", pl.Name, err)
+			return
+		}
 
 		// Менялись сигналы ДРУГОГО ПЛК — у нас ничего не трогаем
-		key := fmt.Sprintf("%s|%v", fresh.Name, rows)
+		key := fmt.Sprintf("%s|%v|%s", fresh.Name, rows, limitsKey(lims))
 		if key == lastKey {
 			return
 		}
@@ -152,7 +160,7 @@ func (u *unit) run(ctx context.Context) {
 
 		groups := buildGroups(fresh, rows)
 		gen++
-		dets = u.buildDetectors(ctx, fresh, rows, groups)
+		dets, limDets = u.buildDetectors(ctx, fresh, rows, lims, groups)
 		kindOf := make(map[string]string, len(rows)) // имя сигнала → тип (тренд / авария / предупреждение)
 		for _, r := range rows {
 			kindOf[r.Name] = r.Kind
@@ -196,7 +204,9 @@ func (u *unit) run(ctx context.Context) {
 			if s.Err == nil && s.Gen == gen {
 				rings[s.Group].Add(buffer.Point{T: s.Time.UnixMilli(), V: s.Values})
 				u.rec.Add(s.Gen, s.Group, s.Time, s.Values)
-				if edges := dets[s.Group].Update(s.Time, s.Values); len(edges) > 0 {
+				edges := dets[s.Group].Update(s.Time, s.Values)
+				edges = append(edges, limDets[s.Group].Update(s.Time, s.Values)...)
+				if len(edges) > 0 {
 					u.saveEdges(ctx, edges)
 					for _, w := range u.snapEdges(ctx, snap, edges) {
 						writeSnap(w)
@@ -219,11 +229,11 @@ func (u *unit) run(ctx context.Context) {
 
 // ---------- Аварии ----------
 
-// buildDetectors — детекторы аварий для новой конфигурации групп.
-// Заодно закрывает в базе активные аварии по сигналам, которые больше не аварии
-// (выключены, удалены, переименованы или сменили тип).
+// buildDetectors — детекторы аварий и норм для новой конфигурации групп.
+// Заодно закрывает в базе активные события по сигналам, которые больше не под контролем
+// (выключены, удалены, переименованы, сменили тип или с них сняли нормы).
 func (u *unit) buildDetectors(ctx context.Context, pl store.PLC, rows []store.SignalRow,
-	groups []plc.Group) []*events.Detector {
+	lims map[int64]store.Limit, groups []plc.Group) ([]*events.Detector, []*events.LimitDetector) {
 
 	byName := make(map[string]store.SignalRow, len(rows))
 	for _, r := range rows {
@@ -241,18 +251,36 @@ func (u *unit) buildDetectors(ctx context.Context, pl store.PLC, rows []store.Si
 	}
 
 	dets := make([]*events.Detector, len(groups))
+	limDets := make([]*events.LimitDetector, len(groups))
 	var watched []string
+	nlim := 0
 	for gi, g := range groups {
 		var bits []events.Bit
+		var ls []events.Limit
 		for i, s := range g.Signals {
 			r := byName[s.Name]
-			if r.Kind != store.KindAlarm && r.Kind != store.KindWarning {
+			if r.Kind == store.KindAlarm || r.Kind == store.KindWarning {
+				bits = append(bits, events.Bit{Index: i, Signal: s.Name, Kind: r.Kind, Message: r.Message})
+				watched = append(watched, s.Name)
 				continue
 			}
-			bits = append(bits, events.Bit{Index: i, Signal: s.Name, Kind: r.Kind, Message: r.Message})
-			watched = append(watched, s.Name)
+			// Нормы — только у аналоговых: у бита «выше 180» не бывает
+			l, ok := lims[r.ID]
+			if !ok || s.Type == plc.Bool {
+				continue
+			}
+			text := r.Message // в сообщении — понятное название, если оно задано
+			if text == "" {
+				text = s.Name
+			}
+			el := events.Limit{Index: i, Signal: s.Name, Text: text, Unit: s.Unit, Kind: l.Kind,
+				Lo: l.Lo, Hi: l.Hi, Hyst: l.Hyst, Jump: l.Jump, JumpMs: l.JumpMs}
+			ls = append(ls, el)
+			watched = append(watched, el.EventNames()...)
 		}
 		dets[gi] = events.NewDetector(bits, active)
+		limDets[gi] = events.NewLimitDetector(ls, active)
+		nlim += len(ls)
 	}
 
 	if n, err := u.st.CloseEventsExcept(ctx, pl.ID, watched, time.Now()); err != nil {
@@ -261,9 +289,25 @@ func (u *unit) buildDetectors(ctx context.Context, pl store.PLC, rows []store.Si
 		log.Printf("[%s] аварии: закрыто %d (сигналы сняты с контроля)", pl.Name, n)
 	}
 	if len(watched) > 0 {
-		log.Printf("[%s] аварии: под наблюдением %d битов", pl.Name, len(watched))
+		log.Printf("[%s] аварии: под наблюдением %d (из них сигналов с нормами: %d)", pl.Name, len(watched), nlim)
 	}
-	return dets
+	return dets, limDets
+}
+
+// limitsKey — нормы одной строкой в постоянном порядке, для «отпечатка» настроек.
+// Просто %v не годится: в Limit указатели, и %v напечатал бы адреса — каждый раз новые.
+// И порядок обхода map в Go случайный — поэтому сортируем.
+func limitsKey(lims map[int64]store.Limit) string {
+	ids := make([]int64, 0, len(lims))
+	for id := range lims {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	var b strings.Builder
+	for _, id := range ids {
+		fmt.Fprintf(&b, "%d:%s;", id, store.DescribeLimit(lims[id], ""))
+	}
+	return b.String()
 }
 
 // saveEdges — записать фронты в журнал и в лог программы

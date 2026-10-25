@@ -94,7 +94,8 @@
     <div class="bar {{if .Warn}}warn{{else}}bad{{end}}">
         {{if .Warn}}▲ ПРЕДУПРЕЖДЕНИЕ{{else}}■ АВАРИЯ{{end}}: {{.Message}}
         <span class="ev-meta">{{.Signal}} · с {{.Came}} · {{.Dur}}</span>
-        <button class="ev-plot" data-sig="{{.Signal}}" title="показать этот бит дорожкой на графике">на график</button>
+        {{if .PlotSig}}<button class="ev-plot" data-sig="{{.PlotSig}}" title="показать этот бит дорожкой на графике">на
+            график</button>{{end}}
         <!-- Форма шунта — в #shelveForm ВНЕ панели: панель обновляется каждую секунду -->
         <button class="ev-plot" hx-get="/ui/shelve?plc={{$.PLCID}}&sig={{.Signal}}" hx-target="#shelveForm"
             title="временно убрать с панели долго висящую аварию">шунт</button>

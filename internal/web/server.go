@@ -110,6 +110,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /ui/signals/bulk/preview", s.bulkPreviewH)
 	mux.HandleFunc("POST /ui/signals/bulk/add", s.bulkAdd)
 
+	// Нормы аналоговых сигналов
+	mux.HandleFunc("GET /limits", s.limitsPage)
+	mux.HandleFunc("GET /ui/limits/{id}", s.limitRow)
+	mux.HandleFunc("GET /ui/limits/{id}/edit", s.limitEdit)
+	mux.HandleFunc("PUT /ui/limits/{id}", s.limitSave)
+
 	mux.HandleFunc("GET /ui/plc", s.showPLC)
 	mux.HandleFunc("GET /ui/plc/edit", s.editPLC)
 	mux.HandleFunc("PUT /ui/plc", s.savePLC)

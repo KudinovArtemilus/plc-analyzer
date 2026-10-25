@@ -119,7 +119,10 @@ var migrations = []string{
 		removed_ms INTEGER,
 		removed_by TEXT    NOT NULL DEFAULT ''
 	 );
-	 CREATE INDEX shelves_plc ON shelves (plc_id, until_ms);`,
+	CREATE INDEX shelves_plc ON shelves (plc_id, until_ms);`,
+
+	// 4: нормы аналоговых сигналов — границы и скачок (limits.go)
+	limitsSchema,
 }
 
 func Open(path string) (*Store, error) {

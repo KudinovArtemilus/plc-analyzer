@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/KudinovArtemilus/plc-analyzer/internal/store"
@@ -14,6 +15,7 @@ type eventView struct {
 	Came, Went, Dur string
 	PLC             string
 	Signal, Message string
+	PlotSig         string // какой бит вывести дорожкой по кнопке «на график»; пусто — кнопки нет
 	Kind            string // «авария» / «предупреждение»
 	Warn            bool   // предупреждение (жёлтое), иначе авария (красная)
 	Active          bool   // ещё не ушла
@@ -24,11 +26,17 @@ func toView(e store.Event, plcName string, now time.Time) eventView {
 		Came:    fmtEventTime(e.Came, e.Came),
 		PLC:     plcName,
 		Signal:  e.Signal,
+		PlotSig: e.Signal,
 		Message: e.Message,
 		Kind:    kindTitle(e.Kind),
 		Warn:    e.Kind == store.KindWarning,
 		Active:  e.Active(),
 	}
+	// Нарушение нормы («P#hi»): сам сигнал — тренд, он и так на графике дорожкой
+	if strings.Contains(e.Signal, "#") {
+		v.PlotSig = ""
+	}
+
 	if v.Active {
 		// Идёт сейчас: до секунды («12 с»), миллисекунды тут только мелькают
 		v.Dur = fmtDurMs(now.Sub(e.Came).Truncate(time.Second).Milliseconds())

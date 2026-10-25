@@ -40,7 +40,7 @@ func TestToView(t *testing.T) {
 // Этот тест рендерит их на примерах, чтобы ошибка нашлась раньше.
 func TestEventTemplates(t *testing.T) {
 	list := []eventView{
-		{Came: "08:00:00.000", Dur: "5 с", PLC: "С1", Signal: "AL1", Message: "Перегрев <масла>", Kind: "авария", Active: true},
+		{Came: "08:00:00.000", Dur: "5 с", PLC: "С1", Signal: "AL1", PlotSig: "AL1", Message: "Перегрев <масла>", Kind: "авария", Active: true},
 		{Came: "07:00:00.000", Went: "07:00:02.000", Dur: "2 с", PLC: "С1", Signal: "W1", Message: "Уровень", Kind: "предупреждение", Warn: true},
 	}
 
