@@ -2,8 +2,12 @@ package web
 
 import (
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/KudinovArtemilus/plc-analyzer/internal/buffer"
 )
 
 func TestFmtNum(t *testing.T) {
@@ -58,5 +62,46 @@ func TestStatsTemplate(t *testing.T) {
 		if !strings.Contains(body, s) {
 			t.Errorf("в шаблоне нет %q", s)
 		}
+	}
+}
+
+func TestLiveStats(t *testing.T) {
+	// Буфер Live: группа 100 мс, сигналы «Давление» и бит «Клещи»
+	ring := buffer.New(100)
+	pts := []struct {
+		p, b float64
+	}{{4, 0}, {6, 1}, {5, 1}, {9, 0}, {2, 1}}
+	for i, x := range pts {
+		ring.Add(buffer.Point{T: int64(1000 + 100*i), V: []float64{x.p, x.b}})
+	}
+	ring.Add(buffer.Point{T: 1600, V: []float64{1}}) // точка от старой конфигурации — пропускается
+
+	s := &Server{}
+	s.SetConfig(1, 1, []Group{{
+		Period: 100 * time.Millisecond, Names: []string{"Давление", "Клещи"},
+		Kinds: []string{"trend", "trend"}, Bits: []bool{false, true}, Units: []string{"бар", ""}, Ring: ring,
+	}})
+
+	// Участок 1100…1400: давление 6 5 9 2, бит 1 1 0 1
+	w := httptest.NewRecorder()
+	q := url.Values{"plc": {"1"}, "from": {"1100"}, "to": {"1400"}, "s": {"Давление", "Клещи"}}
+	s.liveStats(w, httptest.NewRequest("GET", "/ui/live/stats?"+q.Encode(), nil)) // Encode — русские имена в %XX
+	body := strings.Join(strings.Fields(w.Body.String()), " ")
+	for _, want := range []string{"буфера Live", "Давление", "бар", ">2<", ">9<", ">5.5<", ">7<", // мин, макс, среднее, размах
+		"Клещи"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("нет %q в ответе:\n%s", want, body)
+		}
+	}
+	// Первая точка участка уже «1» — не включение; включение одно: 0→1 в 1400
+	if !strings.Contains(body, `<td class="num">1</td>`) {
+		t.Errorf("ожидалось одно включение:\n%s", body)
+	}
+
+	// Неверный участок
+	w = httptest.NewRecorder()
+	s.liveStats(w, httptest.NewRequest("GET", "/ui/live/stats?plc=1&from=5&to=5", nil))
+	if w.Code != 400 {
+		t.Fatalf("пустой участок: код %d, ожидался 400", w.Code)
 	}
 }

@@ -9,10 +9,11 @@ import (
 	"github.com/KudinovArtemilus/plc-analyzer/internal/stats"
 )
 
-// ---------- Статистика по участку (страница «История» и слепки) ----------
+// ---------- Статистика по участку («История», слепки и Live) ----------
 //
-// Считается на сервере по ВСЕМ точкам файла. Браузеру для графика отдаются
-// прореженные точки (пики сохранены), и среднее или число включений по ним было бы неверным.
+// Считается на сервере по ВСЕМ точкам: файла записи или буфера Live. Браузеру для графика
+// «Истории» отдаются прореженные точки (пики сохранены), и среднее или число включений
+// по ним было бы неверным.
 
 // statRow — строка таблицы статистики: аналоговый сигнал или бит
 type statRow struct {
@@ -35,7 +36,51 @@ type statRow struct {
 
 type statsView struct {
 	From, To, Dur string
+	Source        string // откуда точки: из файла записи или из буфера Live
 	Analog, Bits  []statRow
+}
+
+// add — строка в свою таблицу: аналоговые отдельно, биты отдельно
+func (v *statsView) add(row statRow) {
+	if row.Bit {
+		v.Bits = append(v.Bits, row)
+	} else {
+		v.Analog = append(v.Analog, row)
+	}
+}
+
+// statRowFor — строка статистики одного сигнала на участке [from, to].
+// Общая для «Истории» (точки из файла) и Live (точки из буфера).
+func statRowFor(name, unit string, isBit bool, times []int64, vals []float64, from, to, periodMs int64) statRow {
+	row := statRow{Name: name, Unit: unit, Bit: isBit}
+	if isBit {
+		// Разрыв — как на графике: пауза больше трёх периодов опроса
+		b := stats.Bits(times, vals, from, to, 3*periodMs)
+		row.Empty = b.N == 0
+		row.Rises = b.Rises
+		row.On = fmtStatDur(b.OnMs)
+		if b.CoveredMs > 0 {
+			row.OnPct = fmtNum(100*float64(b.OnMs)/float64(b.CoveredMs), 1) + " %"
+		}
+		if b.LongestMs > 0 {
+			row.Longest = fmtStatDur(b.LongestMs)
+			row.LongestAt = fmtStatTime(b.LongestAt)
+			row.LongestCut = b.LongestCut
+		}
+		// Небольшую разницу на краях участка (до первой точки) разрывом не считаем
+		row.Gaps = b.N > 0 && to-from-b.CoveredMs > 3*periodMs
+		return row
+	}
+
+	a := stats.Analyze(times, vals, from, to)
+	row.Empty = a.N == 0
+	if !row.Empty {
+		row.Min, row.MinAt = fmtNum(a.Min, 3), fmtStatTime(a.MinAt)
+		row.Max, row.MaxAt = fmtNum(a.Max, 3), fmtStatTime(a.MaxAt)
+		row.Mean = fmtNum(a.Mean, 3)
+		row.Span = fmtNum(a.Max-a.Min, 3)
+	}
+	return row
 }
 
 // historyStats — GET /ui/history/stats?plc=…&file=…&s=…&from=…&to=… (мс)
@@ -62,45 +107,76 @@ func (s *Server) historyStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	v := statsView{From: fmtStatTime(from), To: fmtStatTime(to), Dur: fmtStatDur(to - from)}
+	v := statsView{From: fmtStatTime(from), To: fmtStatTime(to), Dur: fmtStatDur(to - from),
+		Source: "по всем точкам записи"}
 	for _, ref := range pickSignals(f, q["s"]) {
 		gd := f.Groups[ref.g]
-		info := f.Header.Groups[ref.g].Signals[ref.i]
-		times, vals := gd.Times, gd.Values[ref.i]
+		isBit := strings.EqualFold(f.Header.Groups[ref.g].Signals[ref.i].Type, "BOOL")
+		v.add(statRowFor(ref.Name, ref.Unit, isBit, gd.Times, gd.Values[ref.i], from, to, ref.PeriodMs))
+	}
+	render(w, "stats", v)
+}
 
-		row := statRow{Name: ref.Name, Unit: ref.Unit}
-		if strings.EqualFold(info.Type, "BOOL") {
-			row.Bit = true
-			// Разрыв — как на графике: пауза больше трёх периодов опроса
-			b := stats.Bits(times, vals, from, to, 3*ref.PeriodMs)
-			row.Empty = b.N == 0
-			row.Rises = b.Rises
-			row.On = fmtStatDur(b.OnMs)
-			if b.CoveredMs > 0 {
-				row.OnPct = fmtNum(100*float64(b.OnMs)/float64(b.CoveredMs), 1) + " %"
+// liveStats — GET /ui/live/stats?plc=…&s=…&from=…&to=… (мс).
+// Точки — из буфера Live этого ПЛК (последние 10 минут), а не из браузера:
+// так считает тот же проверенный тестами код, что и для «Истории».
+func (s *Server) liveStats(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	from, err1 := strconv.ParseInt(q.Get("from"), 10, 64)
+	to, err2 := strconv.ParseInt(q.Get("to"), 10, 64)
+	if err1 != nil || err2 != nil || to <= from {
+		http.Error(w, "неверный участок", http.StatusBadRequest)
+		return
+	}
+	want := make(map[string]bool)
+	for _, n := range q["s"] {
+		want[n] = true
+	}
+
+	v := statsView{From: fmtStatTime(from), To: fmtStatTime(to), Dur: fmtStatDur(to - from),
+		Source: "по всем точкам буфера Live (последние 10 минут)"}
+	for _, g := range s.config(s.reqPLCID(r)).Groups {
+		// Какие сигналы этой группы просили
+		var idx []int
+		for i, n := range g.Names {
+			if want[n] {
+				idx = append(idx, i)
 			}
-			if b.LongestMs > 0 {
-				row.Longest = fmtStatDur(b.LongestMs)
-				row.LongestAt = fmtStatTime(b.LongestAt)
-				row.LongestCut = b.LongestCut
-			}
-			// Небольшую разницу на краях участка (до первой точки) разрывом не считаем
-			row.Gaps = b.N > 0 && to-from-b.CoveredMs > 3*ref.PeriodMs
-			v.Bits = append(v.Bits, row)
+		}
+		if len(idx) == 0 || g.Ring == nil {
 			continue
 		}
 
-		a := stats.Analyze(times, vals, from, to)
-		row.Empty = a.N == 0
-		if !row.Empty {
-			row.Min, row.MinAt = fmtNum(a.Min, 3), fmtStatTime(a.MinAt)
-			row.Max, row.MaxAt = fmtNum(a.Max, 3), fmtStatTime(a.MaxAt)
-			row.Mean = fmtNum(a.Mean, 3)
-			row.Span = fmtNum(a.Max-a.Min, 3)
+		// Точки участка: время общее для группы, значения — только нужных сигналов
+		times := []int64{}
+		vals := make([][]float64, len(idx))
+		for _, p := range g.Ring.Since(from - 1) { // Since отдаёт точки НОВЕЕ момента, поэтому from-1
+			if p.T > to {
+				break // точки идут от старых к новым — дальше только позже
+			}
+			if len(p.V) != len(g.Names) {
+				continue // точка от старой конфигурации
+			}
+			times = append(times, p.T)
+			for k, i := range idx {
+				vals[k] = append(vals[k], p.V[i])
+			}
 		}
-		v.Analog = append(v.Analog, row)
+
+		for k, i := range idx {
+			v.add(statRowFor(g.Names[i], at(g.Units, i), i < len(g.Bits) && g.Bits[i],
+				times, vals[k], from, to, g.Period.Milliseconds()))
+		}
 	}
 	render(w, "stats", v)
+}
+
+// at — элемент среза или "", если срез короче (защита от рассогласования)
+func at(list []string, i int) string {
+	if i < len(list) {
+		return list[i]
+	}
+	return ""
 }
 
 // fmtNum — не больше prec знаков после точки, без лишних нулей: 12.5, а не 12.500.

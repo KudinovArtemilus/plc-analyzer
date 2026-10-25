@@ -31,6 +31,8 @@
     <button data-win="600">10 мин</button>
     <button id="btnStop">⏸ Стоп</button>
     <button id="btnOrder" title="вернуть дорожки в исходный порядок">↺ исходный порядок</button>
+    <button id="btnStats" title="мин / макс / среднее и включения битов — между курсорами A–B или на видимом участке">Σ
+      Статистика</button>
     <button id="btnAlarms" title="какие аварии и предупреждения показать дорожками" hidden>■ Аварии на графике</button>
     <span id="hint">ЛКМ — курсор A · ПКМ — курсор B · выделение — зум · Esc — убрать курсоры · ⠿ или ▲▼ у имени —
       порядок дорожек · ⊕ — наложить второй сигнал</span>
@@ -44,6 +46,7 @@
     <span id="cursorText"></span>
     <button id="btnClearCur">✕ убрать курсоры</button>
   </div>
+  <div id="stats" hidden></div>
   <div id="lanes"></div>
 
   <script src="htmx.min.js"></script>
@@ -328,6 +331,7 @@
         if (curA != null) add("a", "A: " + fmtTime(curA));
         if (curB != null) add("b", "B: " + fmtTime(curB));
         if (curA != null && curB != null) add("", "Δt = " + (curB - curA).toFixed(3) + " с");
+        statsChanged();
       }
 
       function setCursor(which, u, px) {
@@ -342,15 +346,73 @@
       function clearCursors() {
         curA = curB = null;
         updateCursors();
+        statsChanged(); // updateCursors выходит раньше, когда курсоров нет
       }
       document.getElementById("btnClearCur").onclick = clearCursors;
       document.addEventListener("keydown", e => { if (e.key === "Escape") clearCursors(); });
+
+      // ---------- Статистика по участку ----------
+      // Участок — как в «Истории»: между курсорами A–B, иначе видимый.
+      // Считает сервер по буферу Live. В Live, пока панель открыта, обновляется раз в 2 с.
+
+      const statsEl = document.getElementById("stats");
+      let statsOpen = false;
+      let statsTimer = null;
+      let statsReq = 0;
+      let statsLast = 0; // когда последний раз запрашивали (мс)
+
+      function statsRange() {
+        if (curA != null && curB != null && curA !== curB) {
+          return { from: Math.min(curA, curB), to: Math.max(curA, curB) };
+        }
+        return range ? { from: range.min, to: range.max } : null;
+      }
+
+      async function loadStats() {
+        const r = statsRange();
+        if (!r) return;
+        statsLast = Date.now();
+        const no = ++statsReq;
+        const q = new URLSearchParams({ from: Math.floor(r.from * 1000), to: Math.ceil(r.to * 1000) });
+        if (PLC_ID) q.set("plc", PLC_ID);
+        lanes.forEach(l => q.append("s", l.name)); // все дорожки, и наложенные тоже
+        const resp = await fetch("ui/live/stats?" + q);
+        if (no !== statsReq || !statsOpen) return; // ответ устарел или панель уже закрыли
+        // Сервер отдаёт HTML из html/template: имена сигналов уже экранированы
+        statsEl.innerHTML = resp.ok ? await resp.text()
+          : '<span class="err">ошибка: ' + (await resp.text()).replace(/</g, "&lt;") + "</span>";
+        statsEl.hidden = false;
+      }
+
+      // Курсор сдвинули или зум — пересчитать через 300 мс после последнего изменения
+      function statsChanged() {
+        if (!statsOpen) return;
+        clearTimeout(statsTimer);
+        statsTimer = setTimeout(loadStats, 300);
+      }
+
+      function closeStats() {
+        statsOpen = false;
+        statsEl.hidden = true;
+        statsEl.textContent = "";
+      }
+
+      document.getElementById("btnStats").onclick = () => {
+        if (statsOpen) { closeStats(); return; }
+        statsOpen = true;
+        loadStats();
+      };
+      // Крестик приходит вместе с таблицей — слушаем щелчки на панели целиком
+      statsEl.addEventListener("click", e => {
+        if (e.target.closest(".stats-close")) closeStats();
+      });
 
       // ---------- Зум ----------
 
       function zoomAll(min, max) {
         if (!paused) setPaused(true);
         setX(min, max);
+        statsChanged();
       }
 
       // ---------- Дорожки ----------
@@ -488,6 +550,8 @@
           l.valEl.textContent = lastValues(l);
         });
         setX(max - windowS, max);
+        // Открытая статистика в Live — раз в 2 с, а не на каждую пачку точек
+        if (statsOpen && !paused && Date.now() - statsLast > 2000) loadStats();
       }
 
       function setPaused(on) {
@@ -522,6 +586,7 @@
             .forEach(b => b.classList.toggle("active", b === btn));
           if (paused) {
             setX(frozenEnd - windowS, frozenEnd);
+            statsChanged();
           } else {
             redraw();
           }

@@ -1,10 +1,9 @@
 {{define "stats"}}
 {{/* Статистика по участку: под курсорами на странице просмотра записи */}}
 <div class="stats-head">
-    <b>Статистика</b> {{.From}} — {{.To}} ({{.Dur}}) · по всем точкам записи
+    <b>Статистика</b> {{.From}} — {{.To}} ({{.Dur}}) · {{.Source}}
     <button type="button" class="stats-close" title="закрыть">✕</button>
 </div>
-
 {{if .Analog}}
 <table class="stats">
     <thead>

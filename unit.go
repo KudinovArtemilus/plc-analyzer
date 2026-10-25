@@ -163,11 +163,16 @@ func (u *unit) run(ctx context.Context) {
 			rings[gi] = buffer.New(int(window / g.Period))
 			names := make([]string, len(g.Signals))
 			kinds := make([]string, len(g.Signals))
+			bits := make([]bool, len(g.Signals))
+			units := make([]string, len(g.Signals))
 			for i, s := range g.Signals {
 				names[i] = s.Name
 				kinds[i] = kindOf[s.Name]
+				bits[i] = s.Type == plc.Bool
+				units[i] = s.Unit
 			}
-			webGroups[gi] = web.Group{Period: g.Period, Names: names, Kinds: kinds, Ring: rings[gi]}
+			webGroups[gi] = web.Group{Period: g.Period, Names: names, Kinds: kinds,
+				Bits: bits, Units: units, Ring: rings[gi]}
 		}
 		infos = groupInfos(groups)
 		u.rec.SetGroups(gen, infos)

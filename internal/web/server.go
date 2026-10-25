@@ -26,6 +26,8 @@ type Group struct {
 	Period time.Duration
 	Names  []string
 	Kinds  []string // тип каждого сигнала: trend / alarm / warning (по порядку Names)
+	Bits   []bool   // сигнал — бит (BOOL): статистика считает включения, а не среднее
+	Units  []string // единицы измерения
 	Ring   *buffer.Ring
 }
 
@@ -95,7 +97,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /ui/status", s.status)
 	mux.HandleFunc("GET /ui/recstatus", s.recStatus)
 	mux.HandleFunc("GET /ui/alarms", s.alarmsPanel)
-
+	mux.HandleFunc("GET /ui/live/stats", s.liveStats)
 	// Сигналы
 	mux.HandleFunc("GET /signals", s.signalsPage)
 	mux.HandleFunc("POST /ui/signals", s.addSignal)
