@@ -15,7 +15,7 @@ type plcView struct {
 }
 
 func (s *Server) showPLC(w http.ResponseWriter, r *http.Request) {
-	pl, err := s.Store.PLC(r.Context(), s.PLC.ID)
+	pl, err := s.Store.PLC(r.Context(), s.defaultPLCID(r.Context()))
 	if err != nil {
 		http.Error(w, friendly(err).Error(), http.StatusInternalServerError)
 		return
@@ -24,7 +24,7 @@ func (s *Server) showPLC(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) editPLC(w http.ResponseWriter, r *http.Request) {
-	pl, err := s.Store.PLC(r.Context(), s.PLC.ID)
+	pl, err := s.Store.PLC(r.Context(), s.defaultPLCID(r.Context()))
 	if err != nil {
 		http.Error(w, friendly(err).Error(), http.StatusInternalServerError)
 		return
@@ -34,7 +34,7 @@ func (s *Server) editPLC(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) savePLC(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	pl, err := s.Store.PLC(ctx, s.PLC.ID)
+	pl, err := s.Store.PLC(ctx, s.defaultPLCID(ctx))
 	if err != nil {
 		http.Error(w, friendly(err).Error(), http.StatusInternalServerError)
 		return

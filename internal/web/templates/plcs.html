@@ -13,7 +13,8 @@
       href="/snapshots">Слепки</a> <a href="/events">События</a></nav>
   <h3>Контроллеры</h3>
   <div class="note">Добавленный ПЛК начинает опрашиваться через секунду. Потом добавьте ему сигналы — ссылка «сигналы» в
-    его строке.</div>
+    его строке. Удалённый ПЛК перестаёт опрашиваться, его настройки и журналы удаляются из базы,
+    а файлы записей на диске остаются.</div>
 
   {{template "plcaddform" .Form}}
 
@@ -64,7 +65,21 @@
     <a href="/?plc={{.ID}}">графики</a>
     <a href="/signals?plc={{.ID}}">сигналы</a>
     <button hx-get="/ui/plcs/{{.ID}}/edit" hx-target="closest tr" hx-swap="outerHTML">изменить</button>
+    <button hx-delete="/ui/plcs/{{.ID}}" hx-target="closest tr" hx-swap="outerHTML" hx-confirm="Удалить ПЛК «{{.Name}}» ({{.IP}})?
+
+Из базы удалятся его сигналы, журнал аварий, шунты и слепки, опрос остановится.
+Файлы записей на диске останутся.">удалить</button>
   </td>
+</tr>
+{{end}}
+
+
+{{define "plcdelerr"}}
+{{/* Удалить не вышло — строка с причиной и кнопкой вернуть обычный вид */}}
+<tr id="plc-{{.PLC.ID}}">
+  <td><b>{{.PLC.Name}}</b></td>
+  <td colspan="4"><span class="err">Не удалён: {{.Err}}</span></td>
+  <td><button hx-get="/ui/plcs/{{.PLC.ID}}" hx-target="closest tr" hx-swap="outerHTML">OK</button></td>
 </tr>
 {{end}}
 

@@ -69,7 +69,7 @@ func who(r *http.Request) string {
 func (s *Server) pagePLC(r *http.Request) (store.PLC, error) {
 	id, err := strconv.ParseInt(r.URL.Query().Get("plc"), 10, 64)
 	if err != nil {
-		id = s.PLC.ID
+		id = s.defaultPLCID(r.Context())
 	}
 	return s.Store.PLC(r.Context(), id)
 }
@@ -104,7 +104,7 @@ func (s *Server) addSignal(w http.ResponseWriter, r *http.Request) {
 	// К какому ПЛК добавляем — из скрытого поля формы
 	plcID, perr := strconv.ParseInt(r.PostForm.Get("plc"), 10, 64)
 	if perr != nil {
-		plcID = s.PLC.ID
+		plcID = s.defaultPLCID(r.Context())
 	}
 	row.PLCID = plcID
 	if err == nil {

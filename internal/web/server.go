@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -68,6 +69,16 @@ func (s *Server) reqPLCID(r *http.Request) int64 {
 	if id, err := strconv.ParseInt(r.URL.Query().Get("plc"), 10, 64); err == nil {
 		return id
 	}
+	return s.defaultPLCID(r.Context())
+}
+
+// defaultPLCID — ПЛК по умолчанию: первый из базы СЕЙЧАС.
+// Раньше брался s.PLC — первый на момент запуска программы, но его могут удалить,
+// пока программа работает, и страницы без ?plc= отвечали бы «не найден».
+func (s *Server) defaultPLCID(ctx context.Context) int64 {
+	if list, err := s.Store.PLCs(ctx); err == nil && len(list) > 0 {
+		return list[0].ID
+	}
 	return s.PLC.ID
 }
 
@@ -127,6 +138,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /ui/plcs/{id}", s.plcRow)
 	mux.HandleFunc("GET /ui/plcs/{id}/edit", s.plcEditRow)
 	mux.HandleFunc("PUT /ui/plcs/{id}", s.updatePLC)
+	mux.HandleFunc("DELETE /ui/plcs/{id}", s.deletePLC)
 	mux.HandleFunc("GET /ui/plcs/{id}/state", s.plcState)
 
 	return mux

@@ -91,6 +91,25 @@ func (s *Server) updatePLC(w http.ResponseWriter, r *http.Request) {
 	render(w, "plcrow", p)
 }
 
+// ---------- Удаление ----------
+
+// deletePLC — DELETE /ui/plcs/{id}: удалить ПЛК вместе с сигналами, журналом аварий,
+// шунтами и слепками. Опрос остановит менеджер (через OnChange). Файлы на диске остаются.
+func (s *Server) deletePLC(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.plcFromPath(w, r)
+	if !ok {
+		return
+	}
+	if _, err := s.Store.DeletePLC(r.Context(), who(r), p); err != nil {
+		if !errors.Is(err, store.ErrLastPLC) {
+			err = friendly(err)
+		}
+		render(w, "plcdelerr", plcFormView{PLC: p, Err: err.Error()})
+		return
+	}
+	w.Header().Set("HX-Refresh", "true") // перерисовать страницу: строки ПЛК больше нет
+}
+
 // ---------- Состояние ПЛК (обновляется каждые 2 с) ----------
 
 func (s *Server) plcState(w http.ResponseWriter, r *http.Request) {
