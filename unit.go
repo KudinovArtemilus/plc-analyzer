@@ -262,7 +262,7 @@ func (u *unit) buildDetectors(ctx context.Context, pl store.PLC, rows []store.Si
 			if r.Kind == store.KindAlarm || r.Kind == store.KindWarning {
 				bits = append(bits, events.Bit{Index: i, Signal: s.Name, Kind: r.Kind, Message: r.Message,
 					Code: s.Type != plc.Bool}) // целое число — номер ошибки
-				// watched = append(watched, s.Name)
+				watched = append(watched, s.Name)
 				continue
 			}
 			// Нормы — только у аналоговых: у бита «выше 180» не бывает
