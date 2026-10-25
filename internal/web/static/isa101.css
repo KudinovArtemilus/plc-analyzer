@@ -575,3 +575,38 @@ tr.bulk-bad td {
   background: var(--alarm-bg);
   color: var(--alarm);
 }
+
+/* ---------- Статистика по участку (28b) ---------- */
+
+#stats {
+  margin: 6px 0;
+  padding: 7px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+#stats .stats-close {
+  float: right;
+  padding: 0 6px;
+}
+
+table.stats {
+  margin-top: 6px;
+}
+
+table.stats td {
+  padding: 3px 9px;
+}
+
+/* Числа — по правому краю и одной ширины: столбец читается сверху вниз */
+table.stats td.num {
+  text-align: right;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.stats-note {
+  margin: 4px 0 0;
+  font-size: 12px;
+}

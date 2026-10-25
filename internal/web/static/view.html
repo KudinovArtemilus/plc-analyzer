@@ -32,6 +32,7 @@
     <span id="cursorText"></span>
     <button id="btnClearCur">✕ убрать курсоры</button>
   </div>
+  <div id="stats" hidden></div>
   <div id="lanes"></div>
 
   <script src="uPlot.iife.min.js"></script>
@@ -67,7 +68,10 @@
       cursorTextEl: document.getElementById("cursorText"),
       clearBtn: document.getElementById("btnClearCur"),
       onZoom: (min, max) => load(min, max),
-      onChange: updateExportInfo,
+      onChange: () => {
+        updateExportInfo();
+        if (window.statsChanged) statsChanged(); // открытая статистика пересчитается (stats.js)
+      },
       orderKey: plc || "default", // тот же порядок дорожек, что на Live этого ПЛК
     });
 
@@ -138,6 +142,9 @@
         viewer.setRange(r.from, r.to);
         await load(r.from, r.to);
       }
+
+
+
 
       const lanes = viewer.getLanes();
       const dpr = window.devicePixelRatio || 1;
@@ -251,6 +258,7 @@
     main();
   </script>
   <script src="snapshot.js"></script>
+  <script src="stats.js"></script>
 </body>
 
 </html>

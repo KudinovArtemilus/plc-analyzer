@@ -1,0 +1,72 @@
+{{define "stats"}}
+{{/* Статистика по участку: под курсорами на странице просмотра записи */}}
+<div class="stats-head">
+    <b>Статистика</b> {{.From}} — {{.To}} ({{.Dur}}) · по всем точкам записи
+    <button type="button" class="stats-close" title="закрыть">✕</button>
+</div>
+
+{{if .Analog}}
+<table class="stats">
+    <thead>
+        <tr>
+            <th>Сигнал</th>
+            <th>Мин</th>
+            <th>когда</th>
+            <th>Макс</th>
+            <th>когда</th>
+            <th>Среднее</th>
+            <th>Размах</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Analog}}
+        <tr>
+            <td>{{.Name}}{{if .Unit}}, <small>{{.Unit}}</small>{{end}}</td>
+            {{if .Empty}}<td colspan="6" class="muted">нет точек на участке</td>{{else}}
+            <td class="num">{{.Min}}</td>
+            <td class="mono muted">{{.MinAt}}</td>
+            <td class="num">{{.Max}}</td>
+            <td class="mono muted">{{.MaxAt}}</td>
+            <td class="num">{{.Mean}}</td>
+            <td class="num">{{.Span}}</td>
+            {{end}}
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+{{end}}
+
+{{if .Bits}}
+<table class="stats">
+    <thead>
+        <tr>
+            <th>Бит</th>
+            <th>Включений</th>
+            <th>В «1»</th>
+            <th>доля</th>
+            <th>Самое долгое «1»</th>
+            <th>с</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Bits}}
+        <tr>
+            <td>{{.Name}}</td>
+            {{if .Empty}}<td colspan="5" class="muted">нет точек на участке</td>{{else}}
+            <td class="num">{{.Rises}}</td>
+            <td class="num">{{.On}}</td>
+            <td class="num">{{.OnPct}}{{if .Gaps}} <span class="muted"
+                    title="на участке был разрыв связи: доля — от времени, когда данные были">*</span>{{end}}</td>
+            <td class="num">{{if .Longest}}{{if .LongestCut}}≥ {{end}}{{.Longest}}{{else}}—{{end}}</td>
+            <td class="mono muted">{{.LongestAt}}</td>
+            {{end}}
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+<p class="muted stats-note">«≥» — «1» упирается в край участка и на самом деле могло длиться дольше.
+    Включение — переход 0→1 внутри участка.</p>
+{{end}}
+
+{{if not (or .Analog .Bits)}}<p class="muted">Не выбраны сигналы.</p>{{end}}
+{{end}}
