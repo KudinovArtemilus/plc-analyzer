@@ -554,3 +554,24 @@ tr.ev-warn td:first-child {
   line-height: 13px;
   margin: 0;
 }
+
+/* ---------- Массовое добавление сигналов (27f) ---------- */
+
+.bulk .bulk-part {
+  margin: 8px 0;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+
+.bulk-sum {
+  margin: 6px 0;
+}
+
+.bulk-table td {
+  padding: 3px 8px;
+}
+
+tr.bulk-bad td {
+  background: var(--alarm-bg);
+  color: var(--alarm);
+}

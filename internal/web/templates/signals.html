@@ -23,6 +23,9 @@
     на панели аварий, когда сработали, и записываются в <a href="/events?plc={{.PLC.ID}}">журнал событий</a>.</div>
 
   {{template "addform" .Form}}
+  <button hx-get="/ui/signals/bulk?plc={{.PLC.ID}}" hx-target="#bulk">＋ Добавить списком (диапазон битов, из
+    Excel)</button>
+  <div id="bulk"></div>
 
   <table>
     <thead>

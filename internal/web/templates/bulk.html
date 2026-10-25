@@ -1,0 +1,97 @@
+{{define "bulkform"}}
+{{/* Массовое добавление: открывается на странице «Сигналы» кнопкой «Добавить списком» */}}
+<div class="panel-form bulk">
+    <b>Добавить списком</b>
+    <button type="button" onclick="document.getElementById('bulk').innerHTML = ''">✕ закрыть</button>
+
+    <form id="bulkRange" class="bulk-part" hx-post="/ui/signals/bulk/preview" hx-target="#bulkPreview">
+        <input type="hidden" name="plc" value="{{.PLCID}}">
+        <input type="hidden" name="mode" value="range">
+        <input type="hidden" name="form_id" value="bulkRange">
+        <b>1. Диапазон битов</b> — например, 64 аварии подряд в одном DB<br>
+        с адреса <input name="start" value="DB100.DBX0.0" size="13">
+        количество <input name="count" value="16" size="4">
+        &nbsp; имя <input name="name_tpl" value="AL_{n}" size="14">
+        нумерация с <input name="first" value="1" size="3">
+        <br>
+        тип {{template "kindselect" "alarm"}}
+        текст <input name="msg_tpl" value="Авария {n}" size="28">
+        период <input name="period_ms" value="100" size="5"> мс
+        <button>Показать</button>
+        <small class="muted">{n} — номер, {addr} — адрес бита. Тексты потом можно поправить в таблице сигналов.</small>
+    </form>
+
+    <form id="bulkPaste" class="bulk-part" hx-post="/ui/signals/bulk/preview" hx-target="#bulkPreview">
+        <input type="hidden" name="plc" value="{{.PLCID}}">
+        <input type="hidden" name="mode" value="paste">
+        <input type="hidden" name="form_id" value="bulkPaste">
+        <b>2. Из Excel или CSV</b> — выделите строки в Excel, Ctrl+C, сюда Ctrl+V<br>
+        <small class="muted">Столбцы по порядку: {{range $i, $c := .Columns}}{{if $i}} · {{end}}{{$c}}{{end}}
+            — обязательны имя и адрес; у битов DBX тип данных можно не писать; тип сигнала: тренд / авария /
+            предупреждение.
+            Строка с заголовками «имя…» пропускается.</small><br>
+        <textarea name="text" id="bulkText" rows="8" cols="110"
+            placeholder="Давление	DB11.DBW90	INT	50	тренд		0,1	-40	бар"></textarea><br>
+        или файл CSV:
+        <!-- Excel по умолчанию сохраняет CSV в кодировке Windows-1251; пробуем UTF-8, не вышло — 1251 -->
+        <input type="file" accept=".csv,.txt" onchange="const f = this.files[0]; if (!f) return;
+        f.arrayBuffer().then(b => {
+          let t;
+          try { t = new TextDecoder('utf-8', { fatal: true }).decode(b); }
+          catch (e) { t = new TextDecoder('windows-1251').decode(b); }
+          document.getElementById('bulkText').value = t;
+        });">
+        &nbsp; период по умолчанию <input name="period_ms" value="100" size="5"> мс
+        <button>Показать</button>
+    </form>
+
+    <div id="bulkPreview"></div>
+</div>
+{{end}}
+
+
+{{define "bulkpreview"}}
+{{if .Err}}<div class="bar bad">{{.Err}}</div>{{else}}
+<div class="bulk-sum">
+    {{if .Bad}}<b class="bad">Строк с ошибками: {{.Bad}}</b> — исправьте и нажмите «Показать» ещё раз
+    (без ошибок: {{.OK}}).{{else}}<b>Всё проверено: {{.OK}} сигналов.</b>
+    <button hx-post="/ui/signals/bulk/add" hx-include="#{{.FormID}}" hx-target="#bulkPreview">Добавить
+        {{.OK}}</button>{{end}}
+</div>
+<table class="bulk-table">
+    <thead>
+        <tr>
+            <th>№</th>
+            <th>Имя</th>
+            <th>Адрес</th>
+            <th>Тип</th>
+            <th>Период</th>
+            <th>Тип сигнала</th>
+            <th>Сообщение</th>
+            <th>Проверка</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Rows}}{{template "bulkrow" .}}{{end}}
+        {{if .Hidden}}<tr>
+            <td colspan="8" class="muted">… ещё {{.Hidden}} строк без ошибок</td>
+        </tr>{{end}}
+        {{range .FirstBad}}{{template "bulkrow" .}}{{end}}
+    </tbody>
+</table>
+{{end}}
+{{end}}
+
+
+{{define "bulkrow"}}
+<tr class="{{if .Err}}bulk-bad{{end}}">
+    <td>{{.Line}}</td>
+    <td>{{.Row.Name}}</td>
+    <td class="mono">{{.Row.Addr}}</td>
+    <td>{{.Row.Type}}</td>
+    <td>{{.Row.PeriodMs}} мс</td>
+    <td>{{kindTitle .Row.Kind}}</td>
+    <td>{{.Row.Message}}</td>
+    <td>{{if .Err}}<b>{{.Err}}</b>{{else}}ок{{end}}</td>
+</tr>
+{{end}}

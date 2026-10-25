@@ -104,6 +104,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /ui/signals/{id}", s.saveSignal)
 	mux.HandleFunc("POST /ui/signals/{id}/toggle", s.toggleSignal)
 	mux.HandleFunc("DELETE /ui/signals/{id}", s.deleteSignal)
+	mux.HandleFunc("GET /ui/signals/bulk", s.bulkFormPage)
+	mux.HandleFunc("POST /ui/signals/bulk/preview", s.bulkPreviewH)
+	mux.HandleFunc("POST /ui/signals/bulk/add", s.bulkAdd)
 
 	mux.HandleFunc("GET /ui/plc", s.showPLC)
 	mux.HandleFunc("GET /ui/plc/edit", s.editPLC)

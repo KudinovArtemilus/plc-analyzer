@@ -229,24 +229,30 @@ func signalFromForm(r *http.Request) (store.SignalRow, error) {
 	if row.Bias, err = parseNum(f.Get("bias"), 0); err != nil {
 		return row, errors.New("смещение: введите число, например -40")
 	}
+	err = checkSignal(&row)
+	return row, err
+}
 
+// checkSignal — общие правила для сигнала: и для формы «Новый сигнал», и для массового
+// добавления. Приводит адрес к обычной записи (db11.dbw90 → DB11.DBW90).
+func checkSignal(row *store.SignalRow) error {
 	// Аварии и предупреждения — дискретные, и человеку нужен понятный текст
 	if row.Kind != store.KindTrend {
 		if row.Type != "BOOL" {
-			return row, errors.New("авария и предупреждение — только BOOL (адрес вида DB100.DBX0.0)")
+			return errors.New("авария и предупреждение — только BOOL (адрес вида DB100.DBX0.0)")
 		}
 		if row.Message == "" {
-			return row, errors.New("для аварии и предупреждения укажите текст сообщения")
+			return errors.New("для аварии и предупреждения укажите текст сообщения")
 		}
 	}
 
 	sig, err := plc.NewSignal(row.Name, row.Addr, plc.DataType(row.Type),
 		time.Duration(row.PeriodMs)*time.Millisecond)
 	if err != nil {
-		return row, err
+		return err
 	}
 	row.Addr = sig.Addr.String()
-	return row, nil
+	return nil
 }
 
 // parseNum понимает и точку, и запятую: "0,1" и "0.1"
