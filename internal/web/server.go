@@ -50,8 +50,8 @@ type Server struct {
 	DataRoot string
 	Cache    *archive.Cache
 	Units    func(id int64) (plc.Status, archive.Status, bool) // состояние любого ПЛК
-
-	cfgs sync.Map // id ПЛК → *config
+	Admins   map[string]bool                                   // кроме этого ПК, менять можно с этих адресов (access.go)
+	cfgs     sync.Map                                          // id ПЛК → *config
 }
 
 // SetConfig — новый состав дорожек ПЛК. Безопасно вызывать из любой горутины.
@@ -163,7 +163,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /ui/plcs/{id}", s.deletePLC)
 	mux.HandleFunc("GET /ui/plcs/{id}/state", s.plcState)
 
-	return mux
+	// Смотреть — всем, менять — только этому ПК и адресам из -admin (access.go)
+	return s.guard(mux)
 }
 
 // plcsJSON — список ПЛК для выпадающего списка на странице графиков

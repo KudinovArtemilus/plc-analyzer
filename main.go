@@ -4,9 +4,12 @@ import (
 	"context"
 	"flag"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -108,6 +111,7 @@ func main() {
 	// Параметры запуска. Справка: plc-analyzer.exe -h
 	dbPath := flag.String("db", "analyzer.db", "файл базы настроек (ПЛК, сигналы, слепки)")
 	addr := flag.String("addr", "127.0.0.1:8080", "адрес веб-сервера; для доступа из сети — :8080")
+	admin := flag.String("admin", "", "кроме этого ПК, менять настройки можно с этих адресов: 10.0.0.5,10.0.0.6")
 	flag.StringVar(&dataRoot, "data", `D:\plc-data`, "папка для записи данных")
 	flag.IntVar(&keepDays, "keep", 30, "сколько дней хранить записи смен")
 	flag.Parse()
@@ -147,9 +151,14 @@ func main() {
 	}
 
 	// 2. Веб и менеджер ПЛК
+	admins, bad := web.ParseAdmins(*admin)
+	if len(bad) > 0 {
+		log.Fatalf("-admin: не IP-адрес: %v", bad) // опечатку лучше увидеть сразу, а не «почему не пускает»
+	}
 	srv := &web.Server{
 		Store: st, PLC: plcs[0],
 		DataRoot: dataRoot, Cache: archive.NewCache(3),
+		Admins: admins,
 	}
 	m := &manager{ctx: ctx, st: st, srv: srv, units: map[int64]*unit{}}
 
@@ -164,6 +173,7 @@ func main() {
 
 	go func() {
 		log.Printf("веб: http://%s  ·  данные: %s  ·  хранение: %d дней", *addr, dataRoot, keepDays)
+		logAccess(*addr, admins)
 		if err := http.ListenAndServe(*addr, srv.Handler()); err != nil {
 			log.Printf("ВЕБ-СЕРВЕР НЕ ЗАПУЩЕН: %v", err)
 		}
@@ -193,4 +203,41 @@ func seed(ctx context.Context, st *store.Store) error {
 		Name: "Пример ПЛК", IP: "192.168.0.10", Rack: 0, Slot: 2,
 	})
 	return err
+}
+
+// logAccess — кто может открыть анализатор и кто может менять настройки
+func logAccess(addr string, admins map[string]bool) {
+	host, _, _ := net.SplitHostPort(addr)
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		log.Printf("доступ: только с этого ПК (для доступа из сети запустите с -addr :8080)")
+		return
+	}
+	list := make([]string, 0, len(admins))
+	for a := range admins {
+		list = append(list, a)
+	}
+	sort.Strings(list)
+	who := "только с этого ПК"
+	if len(list) > 0 {
+		who = "с этого ПК и с " + strings.Join(list, ", ")
+	}
+	log.Printf("доступ из сети: смотреть — всем; менять настройки — %s", who)
+	if ips := localIPs(); len(ips) > 0 {
+		log.Printf("с других ПК открывайте: http://%s%s", ips[0], addr[strings.LastIndex(addr, ":"):])
+	}
+}
+
+// localIPs — IPv4-адреса этого ПК в сети (без 127.0.0.1): подсказка, что вводить на других ПК
+func localIPs() []string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, a := range addrs {
+		if n, ok := a.(*net.IPNet); ok && !n.IP.IsLoopback() && n.IP.To4() != nil {
+			out = append(out, n.IP.String())
+		}
+	}
+	return out
 }
