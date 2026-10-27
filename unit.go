@@ -143,8 +143,16 @@ func (u *unit) run(ctx context.Context) {
 			return
 		}
 
-		// Менялись сигналы ДРУГОГО ПЛК — у нас ничего не трогаем
-		key := fmt.Sprintf("%s|%v|%s", fresh.Name, rows, limitsKey(lims))
+		// Менялись сигналы ДРУГОГО ПЛК — у нас ничего не трогаем.
+		// «Скрыт с графиков» в отпечаток не входит: это только показ, опрос и запись те же.
+		// Иначе скрытие перестраивало бы опрос, а с ним — буфер Live и файл записи.
+		keyRows := make([]store.SignalRow, len(rows))
+		copy(keyRows, rows)
+		for i := range keyRows {
+			keyRows[i].Hidden = false
+		}
+		key := fmt.Sprintf("%s|%v|%s", fresh.Name, keyRows, limitsKey(lims))
+
 		if key == lastKey {
 			return
 		}

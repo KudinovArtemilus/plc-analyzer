@@ -48,6 +48,7 @@ type SignalRow struct {
 	Enabled  bool
 	Kind     string // trend / alarm / warning
 	Message  string // текст для человека: «Перегрев масла гидростанции»
+	Hidden   bool   // не показывать на графиках Live; опрос и запись идут как обычно
 }
 
 var ErrNotFound = errors.New("запись не найдена")
@@ -123,6 +124,9 @@ var migrations = []string{
 
 	// 4: нормы аналоговых сигналов — границы и скачок (limits.go)
 	limitsSchema,
+
+	// 5: скрыть сигнал с графиков Live, не прекращая опрос и запись
+	`ALTER TABLE signals ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func Open(path string) (*Store, error) {
@@ -215,7 +219,7 @@ func (s *Store) PLC(ctx context.Context, id int64) (PLC, error) {
 	return p, err
 }
 
-const signalCols = `id, plc_id, name, addr, type, period_ms, scale, bias, unit, enabled, kind, message`
+const signalCols = `id, plc_id, name, addr, type, period_ms, scale, bias, unit, enabled, kind, message, hidden`
 
 type scanner interface {
 	Scan(dest ...any) error
@@ -224,7 +228,7 @@ type scanner interface {
 func scanSignal(sc scanner) (SignalRow, error) {
 	var r SignalRow
 	err := sc.Scan(&r.ID, &r.PLCID, &r.Name, &r.Addr, &r.Type,
-		&r.PeriodMs, &r.Scale, &r.Bias, &r.Unit, &r.Enabled, &r.Kind, &r.Message)
+		&r.PeriodMs, &r.Scale, &r.Bias, &r.Unit, &r.Enabled, &r.Kind, &r.Message, &r.Hidden)
 	return r, err
 }
 
@@ -319,6 +323,17 @@ func (s *Store) SetSignalEnabled(ctx context.Context, who string, r SignalRow) e
 	}
 	_, err := s.change(ctx, who, action, r.Name,
 		`UPDATE signals SET enabled = ? WHERE id = ?`, r.Enabled, r.ID)
+	return err
+}
+
+// SetSignalHidden — скрыть сигнал с графиков Live или вернуть. Опрос и запись не меняются.
+func (s *Store) SetSignalHidden(ctx context.Context, who string, r SignalRow) error {
+	action := "сигнал показан на графиках"
+	if r.Hidden {
+		action = "сигнал скрыт с графиков"
+	}
+	_, err := s.change(ctx, who, action, r.Name,
+		`UPDATE signals SET hidden = ? WHERE id = ?`, r.Hidden, r.ID)
 	return err
 }
 

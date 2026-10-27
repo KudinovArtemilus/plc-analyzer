@@ -142,7 +142,7 @@ func (s *Server) saveSignal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	row, err := signalFromForm(r)
-	row.ID, row.PLCID, row.Enabled = old.ID, old.PLCID, old.Enabled
+	row.ID, row.PLCID, row.Enabled, row.Hidden = old.ID, old.PLCID, old.Enabled, old.Hidden
 	if err == nil {
 		err = friendly(s.Store.UpdateSignal(r.Context(), who(r), row))
 	}
@@ -160,6 +160,21 @@ func (s *Server) toggleSignal(w http.ResponseWriter, r *http.Request) {
 	}
 	row.Enabled = !row.Enabled
 	if err := s.Store.SetSignalEnabled(r.Context(), who(r), row); err != nil {
+		http.Error(w, friendly(err).Error(), http.StatusInternalServerError)
+		return
+	}
+	render(w, "row", row)
+}
+
+// hideSignal — POST /ui/signals/{id}/hide: скрыть с графиков Live или вернуть.
+// Опрос и запись продолжаются: в «Истории» сигнал можно отметить и посмотреть.
+func (s *Server) hideSignal(w http.ResponseWriter, r *http.Request) {
+	row, ok := s.rowFromPath(w, r)
+	if !ok {
+		return
+	}
+	row.Hidden = !row.Hidden
+	if err := s.Store.SetSignalHidden(r.Context(), who(r), row); err != nil {
 		http.Error(w, friendly(err).Error(), http.StatusInternalServerError)
 		return
 	}

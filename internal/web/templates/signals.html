@@ -22,9 +22,12 @@
     <a href="/plcs">все ПЛК →</a>
   </h3>
   <div class="note">Изменения применяются к опросу автоматически примерно через секунду.
+    <b>Выключить</b> — сигнал не опрашивается и не записывается. <b>Скрыть</b> — опрашивается и
+    записывается, но на графиках Live не показан; в «Истории» его можно отметить и посмотреть.
     Аварии и предупреждения — BOOL (1 = авария) или целое число с кодом ошибки (не 0 = авария, код
     попадает в сообщение). На графиках Live их нет: они появляются
-    на панели аварий, когда сработали, и записываются в <a href="/events?plc={{.PLC.ID}}">журнал событий</a>.</div>
+    на панели аварий, когда сработали, и записываются в <a href="/events?plc={{.PLC.ID}}">журнал событий</a>.
+  </div>
 
   {{template "addform" .Form}}
   <button hx-get="/ui/signals/bulk?plc={{.PLC.ID}}" hx-target="#bulk">＋ Добавить списком (диапазон битов, из
@@ -60,7 +63,8 @@
 
 {{define "row"}}
 <tr id="sig-{{.ID}}" {{if not .Enabled}}class="off" {{end}}>
-  <td>{{.Name}}</td>
+  <td>{{.Name}}{{if .Hidden}} <small class="muted" title="опрашивается и пишется; на графиках Live не показан">·
+      скрыт</small>{{end}}</td>
   <td>{{kindTitle .Kind}}</td>
   <td>{{.Addr}}</td>
   <td>{{.Type}}</td>
@@ -74,6 +78,9 @@
     <button hx-post="/ui/signals/{{.ID}}/toggle" hx-target="closest tr" hx-swap="outerHTML">
       {{if .Enabled}}выключить{{else}}включить{{end}}
     </button>
+    {{if eq .Kind "trend"}}<button hx-post="/ui/signals/{{.ID}}/hide" hx-target="closest tr" hx-swap="outerHTML"
+      title="{{if .Hidden}}снова показывать на графиках Live{{else}}не показывать на графиках Live; опрос и запись продолжаются — в «Истории» сигнал есть{{end}}">
+      {{if .Hidden}}показать{{else}}скрыть{{end}}</button>{{end}}
     <button hx-delete="/ui/signals/{{.ID}}" hx-target="closest tr" hx-swap="outerHTML"
       hx-confirm="Удалить сигнал {{.Name}}?">удалить</button>
   </td>

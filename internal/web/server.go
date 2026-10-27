@@ -105,6 +105,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /ui/signals/{id}/edit", s.editRow)
 	mux.HandleFunc("PUT /ui/signals/{id}", s.saveSignal)
 	mux.HandleFunc("POST /ui/signals/{id}/toggle", s.toggleSignal)
+	mux.HandleFunc("POST /ui/signals/{id}/hide", s.hideSignal)
 	mux.HandleFunc("DELETE /ui/signals/{id}", s.deleteSignal)
 	mux.HandleFunc("GET /ui/signals/bulk", s.bulkFormPage)
 	mux.HandleFunc("POST /ui/signals/bulk/preview", s.bulkPreviewH)
@@ -179,14 +180,29 @@ func (s *Server) groups(w http.ResponseWriter, r *http.Request) {
 	type groupJSON struct {
 		PeriodMs int64    `json:"period_ms"`
 		Names    []string `json:"names"`
-		Kinds    []string `json:"kinds"` // Live по умолчанию прячет аварии и предупреждения
-		Bits     []bool   `json:"bits"`  // бит или число: у кода ошибки на дорожке не только 0 и 1
+		Kinds    []string `json:"kinds"`  // Live по умолчанию прячет аварии и предупреждения
+		Bits     []bool   `json:"bits"`   // бит или число: у кода ошибки на дорожке не только 0 и 1
+		Hidden   []bool   `json:"hidden"` // скрыт с графиков Live (опрос и запись идут)
 	}
-	c := s.config(s.reqPLCID(r))
+	plcID := s.reqPLCID(r)
+	c := s.config(plcID)
+
+	// «Скрыт» берём из базы при каждом запросе, а не из конфигурации опроса:
+	// скрытие не перестраивает опрос, поэтому в конфигурации его нет
+	hidden := map[string]bool{}
+	if rows, err := s.Store.Signals(r.Context(), plcID); err == nil {
+		for _, row := range rows {
+			hidden[row.Name] = row.Hidden
+		}
+	}
+
 	out := make([]groupJSON, len(c.Groups))
 	for i, g := range c.Groups {
-
-		out[i] = groupJSON{PeriodMs: g.Period.Milliseconds(), Names: g.Names, Kinds: g.Kinds, Bits: g.Bits}
+		h := make([]bool, len(g.Names))
+		for k, n := range g.Names {
+			h[k] = hidden[n]
+		}
+		out[i] = groupJSON{PeriodMs: g.Period.Milliseconds(), Names: g.Names, Kinds: g.Kinds, Bits: g.Bits, Hidden: h}
 	}
 	writeJSON(w, out)
 }

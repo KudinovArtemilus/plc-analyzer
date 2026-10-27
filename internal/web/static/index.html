@@ -161,6 +161,7 @@
       groups.forEach((g, gi) =>
         g.names.forEach((name, si) => {
           const kind = (g.kinds && g.kinds[si]) || "trend";
+          if (kind === "trend" && g.hidden && g.hidden[si]) return;
           if (kind !== "trend") {
             alarmSignals.push({ name, kind });
             if (!shown.has(name)) return;
