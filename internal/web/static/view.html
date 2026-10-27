@@ -248,6 +248,8 @@
 
       document.getElementById("title").textContent = "История: " + meta.title;
       full = { from: meta.from_ms / 1000, to: meta.to_ms / 1000 };
+      // Подписи шагов и кодов из справочников (сигналы ищутся по имени у ПЛК сейчас)
+      try { viewer.setTexts(await (await fetch("api/dicts" + plcQ)).json()); } catch (e) { }
       viewer.build(meta.signals.map(s => ({ name: s.name, unit: s.unit, periodMs: s.period_ms })));
       await load();
       if (meta.damaged) setStatus("Файл оборван (например, отключали питание) — показана целая часть", true);

@@ -12,7 +12,7 @@
   <nav><a href="/?plc={{.PLC.ID}}">← Графики</a> <a href="/plcs">ПЛК</a> <b>Сигналы</b> <a
       href="/history?plc={{.PLC.ID}}">История</a> <a href="/snapshots?plc={{.PLC.ID}}">Слепки</a> <a
       href="/events?plc={{.PLC.ID}}">События</a>
-    <a href="/limits?plc={{.PLC.ID}}">Нормы</a>
+    <a href="/limits?plc={{.PLC.ID}}">Нормы</a> <a href="/dicts?plc={{.PLC.ID}}">Справочники</a>
   </nav>
 
   <h3>Сигналы ПЛК
@@ -45,7 +45,7 @@
         <th>Коэф. ×</th>
         <th>Смещ. +</th>
         <th>Ед.</th>
-        <th>Сообщение</th>
+        <th>Сообщение / справочник</th>
         <th></th>
       </tr>
     </thead>
@@ -72,7 +72,8 @@
   <td>{{.Scale}}</td>
   <td>{{.Bias}}</td>
   <td>{{.Unit}}</td>
-  <td>{{.Message}}</td>
+  <td>{{.Message}}{{if .DictID}} <small class="muted" title="значения подписываются по справочнику">·
+      справочник</small>{{end}}</td>
   <td>
     <button hx-get="/ui/signals/{{.ID}}/edit" hx-target="closest tr" hx-swap="outerHTML">изменить</button>
     <button hx-post="/ui/signals/{{.ID}}/toggle" hx-target="closest tr" hx-swap="outerHTML">
@@ -98,7 +99,7 @@
   <td><input name="scale" value="{{.Row.Scale}}" size="5"></td>
   <td><input name="bias" value="{{.Row.Bias}}" size="5"></td>
   <td><input name="unit" value="{{.Row.Unit}}" size="4"></td>
-  <td><input name="message" value="{{.Row.Message}}" size="28"></td>
+  <td><input name="message" value="{{.Row.Message}}" size="28"> {{template "dictselect" .}}</td>
   <td>
     <button hx-put="/ui/signals/{{.Row.ID}}" hx-include="closest tr" hx-target="closest tr"
       hx-swap="outerHTML">сохранить</button>

@@ -49,6 +49,7 @@ type SignalRow struct {
 	Kind     string // trend / alarm / warning
 	Message  string // текст для человека: «Перегрев масла гидростанции»
 	Hidden   bool   // не показывать на графиках Live; опрос и запись идут как обычно
+	DictID   int64  // справочник «число → текст» (коды ошибок, шаги); 0 — нет
 }
 
 var ErrNotFound = errors.New("запись не найдена")
@@ -127,6 +128,9 @@ var migrations = []string{
 
 	// 5: скрыть сигнал с графиков Live, не прекращая опрос и запись
 	`ALTER TABLE signals ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;`,
+
+	// 6: справочники «число → текст» и ссылка на справочник у сигнала (dicts.go)
+	dictsSchema,
 }
 
 func Open(path string) (*Store, error) {
@@ -219,7 +223,9 @@ func (s *Store) PLC(ctx context.Context, id int64) (PLC, error) {
 	return p, err
 }
 
-const signalCols = `id, plc_id, name, addr, type, period_ms, scale, bias, unit, enabled, kind, message, hidden`
+// COALESCE: «справочника нет» в базе — NULL, а в Go удобнее 0
+const signalCols = `id, plc_id, name, addr, type, period_ms, scale, bias, unit, enabled, kind, message, hidden,
+	COALESCE(dict_id, 0)`
 
 type scanner interface {
 	Scan(dest ...any) error
@@ -228,7 +234,7 @@ type scanner interface {
 func scanSignal(sc scanner) (SignalRow, error) {
 	var r SignalRow
 	err := sc.Scan(&r.ID, &r.PLCID, &r.Name, &r.Addr, &r.Type,
-		&r.PeriodMs, &r.Scale, &r.Bias, &r.Unit, &r.Enabled, &r.Kind, &r.Message, &r.Hidden)
+		&r.PeriodMs, &r.Scale, &r.Bias, &r.Unit, &r.Enabled, &r.Kind, &r.Message, &r.Hidden, &r.DictID)
 	return r, err
 }
 
@@ -311,8 +317,8 @@ func (s *Store) UpdateSignal(ctx context.Context, who string, r SignalRow) error
 	r = normalize(r)
 	_, err := s.change(ctx, who, "изменён сигнал", describe(r),
 		`UPDATE signals SET name = ?, addr = ?, type = ?, period_ms = ?,
-		        scale = ?, bias = ?, unit = ?, kind = ?, message = ? WHERE id = ?`,
-		r.Name, r.Addr, r.Type, r.PeriodMs, r.Scale, r.Bias, r.Unit, r.Kind, r.Message, r.ID)
+		        scale = ?, bias = ?, unit = ?, kind = ?, message = ?, dict_id = NULLIF(?, 0) WHERE id = ?`,
+		r.Name, r.Addr, r.Type, r.PeriodMs, r.Scale, r.Bias, r.Unit, r.Kind, r.Message, r.DictID, r.ID)
 	return err
 }
 

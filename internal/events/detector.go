@@ -7,6 +7,8 @@ package events
 
 import (
 	"strconv"
+	"strings"
+	"testing"
 	"time"
 )
 
@@ -101,13 +103,41 @@ func (d *Detector) Update(at time.Time, values []float64) []Edge {
 	return edges
 }
 
+// codeSep — как код дописывается в сообщение. Тот же разделитель читает CodeOf.
+const codeSep = ": код "
+
 // withCode — у кода ошибки дописывает номер в сообщение: «Привод стола: код 7501»
 func withCode(b Bit, v float64) Bit {
 	if b.Code {
-		b.Message += ": код " + strconv.FormatInt(int64(v), 10) // b — копия, исходный Bit не меняется
+		b.Message += codeSep + strconv.FormatInt(int64(v), 10) // b — копия, исходный Bit не меняется
 	}
 	return b
 }
 
+// CodeOf — код ошибки из сообщения, которое собрал withCode: «Привод стола: код 7501» → 7501.
+// Нужен страницам, чтобы подписать код текстом из справочника уже при показе
+// (текст могли завести позже, чем пришла авария).
+func CodeOf(message string) (int64, bool) {
+	i := strings.LastIndex(message, codeSep)
+	if i < 0 {
+		return 0, false
+	}
+	n, err := strconv.ParseInt(message[i+len(codeSep):], 10, 64)
+	return n, err == nil
+}
+
 // Len — сколько битов под наблюдением
 func (d *Detector) Len() int { return len(d.bits) }
+
+func TestCodeOf(t *testing.T) {
+	// То, что пишет withCode, читается обратно
+	b := withCode(Bit{Message: "Привод стола", Code: true}, 7501)
+	if n, ok := CodeOf(b.Message); !ok || n != 7501 {
+		t.Fatalf("CodeOf(%q) = %d, %v", b.Message, n, ok)
+	}
+	for _, m := range []string{"Перегрев масла", "Давление: выше 180 бар", "Привод: код ", "Привод: код 75x"} {
+		if _, ok := CodeOf(m); ok {
+			t.Errorf("CodeOf(%q): кода нет, а найден", m)
+		}
+	}
+}

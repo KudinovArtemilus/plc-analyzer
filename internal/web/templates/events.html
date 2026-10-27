@@ -66,7 +66,7 @@
             <td>{{.Dur}}</td>
             <td>{{.PLC}}</td>
             <td>{{.Signal}}</td>
-            <td>{{.Message}}</td>
+            <td>{{.Message}}{{template "codetext" .}}</td>
             <td>{{.Kind}}</td>
         </tr>
         {{end}}
@@ -92,7 +92,7 @@
     </div>
     {{range .List}}
     <div class="bar {{if .Warn}}warn{{else}}bad{{end}}">
-        {{if .Warn}}▲ ПРЕДУПРЕЖДЕНИЕ{{else}}■ АВАРИЯ{{end}}: {{.Message}}
+        {{if .Warn}}▲ ПРЕДУПРЕЖДЕНИЕ{{else}}■ АВАРИЯ{{end}}: {{.Message}}{{template "codetext" .}}
         <span class="ev-meta">{{.Signal}} · с {{.Came}} · {{.Dur}}</span>
         {{if .PlotSig}}<button class="ev-plot" data-sig="{{.PlotSig}}" title="показать этот бит дорожкой на графике">на
             график</button>{{end}}
@@ -110,4 +110,10 @@
 {{/* Зашунтированные не прячем бесследно: всегда видно, сколько шунтов действует */}}
 {{if .Shelves}}· <a href="/shelves?plc={{.PLCID}}" class="muted">шунтов: {{.Shelves}}{{if .Shelved}}
     (скрыто активных: {{.Shelved}}){{end}}</a>{{end}}
+{{end}}
+
+{{define "codetext"}}
+{{- /* Код ошибки: текст из справочника или ссылка «описать», если кода там ещё нет */ -}}
+{{- if .CodeText}} — {{.CodeText}}{{else if .Describe}} <a href="{{.Describe}}" class="describe" target="_blank"
+    title="этого кода ещё нет в справочнике — добавить описание">описать</a>{{end -}}
 {{end}}

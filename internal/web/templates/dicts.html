@@ -1,0 +1,131 @@
+{{define "dictsnav"}}
+<nav><a href="/?plc={{.PLC}}">← Графики</a> <a href="/plcs">ПЛК</a>
+    <a href="/signals?plc={{.PLC}}">Сигналы</a> <a href="/limits?plc={{.PLC}}">Нормы</a>
+    {{if .Dict.ID}}<a href="/dicts?plc={{.PLC}}">Справочники</a>{{else}}<b>Справочники</b>{{end}}
+    <a href="/history?plc={{.PLC}}">История</a> <a href="/events?plc={{.PLC}}">События</a>
+</nav>
+{{end}}
+
+
+{{define "dicts"}}
+<!doctype html>
+<html lang="ru">
+
+<head>
+    <meta charset="utf-8">
+    <title>Справочники — PLC Analyzer</title>
+    <link rel="stylesheet" href="/isa101.css">
+</head>
+
+<body>
+    {{template "dictsnav" .}}
+    <h3>Справочники «число → текст»</h3>
+    <div class="note">Коды ошибок, номера шагов и любые другие числа с понятным текстом.
+        Справочник назначается целочисленному сигналу (INT, WORD, DINT) в форме «изменить» на странице
+        «Сигналы». Справочники общие для всех ПЛК.</div>
+
+    <form method="post" action="/dicts?plc={{.PLC}}" class="panel-form">
+        <b>Новый справочник:</b>
+        <input name="name" value="{{.Name}}" size="30" placeholder="например: Шаги или Привод стола" required>
+        <button>Создать</button>
+        {{if .Err}}<span class="err">{{.Err}}</span>{{end}}
+    </form>
+
+    {{if not .List}}<p>Справочников пока нет.</p>{{else}}
+    <table>
+        <thead>
+            <tr>
+                <th>Справочник</th>
+                <th>Строк</th>
+                <th>Назначен сигналам</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .List}}
+            <tr>
+                <td><a href="/dicts/{{.ID}}?plc={{$.PLC}}"><b>{{.Name}}</b></a></td>
+                <td class="mono">{{.Items}}</td>
+                <td class="mono">{{.Used}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{end}}
+</body>
+
+</html>
+{{end}}
+
+
+{{define "dict"}}
+<!doctype html>
+<html lang="ru">
+
+<head>
+    <meta charset="utf-8">
+    <title>{{.Dict.Name}} — справочник</title>
+    <link rel="stylesheet" href="/isa101.css">
+</head>
+
+<body>
+    {{template "dictsnav" .}}
+    <h3>Справочник «{{.Dict.Name}}»
+        <small class="muted">строк: {{.Dict.Items}} · назначен сигналам: {{.Dict.Used}}</small>
+    </h3>
+
+    <!-- Одна форма и для новой строки, и для правки: то же число — текст заменится -->
+    <form method="post" action="/dicts/{{.Dict.ID}}/items?plc={{.PLC}}" class="panel-form">
+        <b>Строка:</b>
+        <input name="value" value="{{.Value}}" size="8" placeholder="число" required {{if not .Value}}autofocus{{end}}>
+        —
+        <input name="text" value="{{.Text}}" size="50" placeholder="текст, например: Зажим закрыт, ждём стол" required
+            {{if .Value}}autofocus{{end}}>
+        <button>Сохранить</button>
+        {{if .Err}}<span class="err">{{.Err}}</span>{{end}}
+        <br><small class="muted">Такое число уже есть — его текст заменится.</small>
+    </form>
+
+    {{if not .Items}}<p>Строк пока нет.</p>{{else}}
+    <table>
+        <thead>
+            <tr>
+                <th>Число</th>
+                <th>Текст</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Items}}
+            <tr>
+                <td class="mono">{{.Value}}</td>
+                <td>{{.Text}}</td>
+                <td>
+                    <a href="/dicts/{{$.Dict.ID}}?plc={{$.PLC}}&v={{.Value}}">изменить</a>
+                    <form method="post" action="/dicts/{{$.Dict.ID}}/items/{{.Value}}/delete?plc={{$.PLC}}"
+                        style="display:inline" onsubmit="return confirm('Удалить строку {{.Value}}?')">
+                        <button>удалить</button>
+                    </form>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{end}}
+
+    <form method="post" action="/dicts/{{.Dict.ID}}/delete?plc={{.PLC}}" style="margin-top:24px"
+        onsubmit="return confirm('Удалить справочник «{{.Dict.Name}}» со всеми строками? У сигналов он просто отвяжется.')">
+        <button>Удалить справочник</button>
+    </form>
+</body>
+
+</html>
+{{end}}
+
+
+{{define "dictselect"}}
+{{/* Выбор справочника в строке-форме сигнала. .Row — сигнал, .Dicts — все справочники */}}
+<select name="dict" title="справочник «число → текст»: коды ошибок, шаги">
+    <option value="0">—</option>
+    {{range .Dicts}}<option value="{{.ID}}" {{if eq .ID $.Row.DictID}}selected{{end}}>{{.Name}}</option>{{end}}
+</select>
+{{end}}

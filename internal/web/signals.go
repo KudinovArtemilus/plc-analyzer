@@ -43,8 +43,15 @@ func kindTitle(k string) string {
 
 // formView — данные для формы: значения полей и текст ошибки
 type formView struct {
-	Row store.SignalRow
-	Err string
+	Row   store.SignalRow
+	Err   string
+	Dicts []store.Dict // для выбора справочника в форме «изменить»
+}
+
+// dicts — список справочников для формы; без него форма просто без выбора, это не ошибка
+func (s *Server) dicts(r *http.Request) []store.Dict {
+	list, _ := s.Store.Dicts(r.Context())
+	return list
 }
 
 func render(w http.ResponseWriter, name string, data any) {
@@ -132,7 +139,7 @@ func (s *Server) showRow(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) editRow(w http.ResponseWriter, r *http.Request) {
 	if row, ok := s.rowFromPath(w, r); ok {
-		render(w, "editrow", formView{Row: row})
+		render(w, "editrow", formView{Row: row, Dicts: s.dicts(r)})
 	}
 }
 
@@ -147,7 +154,7 @@ func (s *Server) saveSignal(w http.ResponseWriter, r *http.Request) {
 		err = friendly(s.Store.UpdateSignal(r.Context(), who(r), row))
 	}
 	if err != nil {
-		render(w, "editrow", formView{Row: row, Err: err.Error()})
+		render(w, "editrow", formView{Row: row, Err: err.Error(), Dicts: s.dicts(r)})
 		return
 	}
 	render(w, "row", row)
@@ -227,6 +234,7 @@ func signalFromForm(r *http.Request) (store.SignalRow, error) {
 		Kind:    f.Get("kind"),
 		Message: strings.TrimSpace(f.Get("message")),
 	}
+	row.DictID, _ = strconv.ParseInt(f.Get("dict"), 10, 64) // нет поля или «—» — 0, без справочника
 	if row.Kind == "" {
 		row.Kind = store.KindTrend
 	}
@@ -261,6 +269,11 @@ func checkSignal(row *store.SignalRow) error {
 		if row.Message == "" {
 			return errors.New("для аварии и предупреждения укажите текст сообщения")
 		}
+	}
+
+	// Справочник «число → текст» — только у целых: у бита два значения, у REAL кодов не бывает
+	if row.DictID != 0 && (row.Type == "BOOL" || row.Type == "REAL") {
+		return errors.New("справочник — только для целых чисел (INT, WORD, DINT…)")
 	}
 
 	sig, err := plc.NewSignal(row.Name, row.Addr, plc.DataType(row.Type),

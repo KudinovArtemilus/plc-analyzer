@@ -93,6 +93,7 @@ func (s *Server) Handler() http.Handler {
 	// Live
 	mux.HandleFunc("GET /api/plcs", s.plcsJSON)
 	mux.HandleFunc("GET /api/groups", s.groups)
+	mux.HandleFunc("GET /api/dicts", s.dictTextsJSON)
 	mux.HandleFunc("GET /api/stream", s.stream)
 	mux.HandleFunc("GET /ui/status", s.status)
 	mux.HandleFunc("GET /ui/recstatus", s.recStatus)
@@ -110,6 +111,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /ui/signals/bulk", s.bulkFormPage)
 	mux.HandleFunc("POST /ui/signals/bulk/preview", s.bulkPreviewH)
 	mux.HandleFunc("POST /ui/signals/bulk/add", s.bulkAdd)
+
+	// Справочники «число → текст»
+	mux.HandleFunc("GET /dicts", s.dictsPage)
+	mux.HandleFunc("POST /dicts", s.dictAdd)
+	mux.HandleFunc("GET /dicts/{id}", s.dictPage)
+	mux.HandleFunc("POST /dicts/{id}/items", s.dictItemSet)
+	mux.HandleFunc("POST /dicts/{id}/items/{v}/delete", s.dictItemDelete)
+	mux.HandleFunc("POST /dicts/{id}/delete", s.dictDelete)
 
 	// Нормы аналоговых сигналов
 	mux.HandleFunc("GET /limits", s.limitsPage)

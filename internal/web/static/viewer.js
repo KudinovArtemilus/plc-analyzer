@@ -33,7 +33,9 @@ function fmtVal(v) {
 //   cfg.onChange()       — сменились курсоры или видимый участок
 //   cfg.orderKey         — под каким именем запоминать порядок дорожек и наложения (номер ПЛК)
 function createViewer(cfg) {
-  const LANE_H = 80, NAME_W = 130, VAL_W = 110;
+  const LANE_H = 80, NAME_W = 130;
+  let VAL_W = 110;  // шире, если есть подписи из справочников (setTexts)
+  let texts = {};   // {"Step": {"12": "Зажим закрыт"}} — подписи значений
   const COLOR_A = ISA.cursorA, COLOR_B = ISA.cursorB;
   const colors = ISA.traces;
   const plotWidth = () => window.innerWidth - NAME_W - VAL_W - 40;
@@ -75,16 +77,20 @@ function createViewer(cfg) {
 
   // Значение сигнала в момент t — по его СОБСТВЕННЫМ точкам, а не по общему набору графика
   // (в общем наборе после слияния у сигнала бывают null)
-  function valueAt(src, t) {
+  // name — имя сигнала: по нему ищется подпись из справочника («12 · Зажим закрыт»)
+  function valueAt(src, t, name) {
     if (!src) return "—";
     const i = nearestIdx(src[0], t);
-    return i < 0 || src[1][i] == null ? "—" : fmtVal(src[1][i]);
+    if (i < 0 || src[1][i] == null) return "—";
+    const v = src[1][i];
+    const txt = texts[name] ? texts[name][String(v)] : "";
+    return fmtVal(v) + (txt ? " · " + txt : "");
   }
 
   // «12» или «12 / 7.5», если на дорожку наложен второй сигнал
   function valuesAt(l, t) {
     const o = ovLane(l);
-    return valueAt(l.src, t) + (o ? " / " + valueAt(o.src, t) : "");
+    return valueAt(l.src, t, l.name) + (o ? " / " + valueAt(o.src, t, o.name) : "");
   }
 
   function showValues(l) {
@@ -232,6 +238,7 @@ function createViewer(cfg) {
       row.dataset.name = d.name; // по имени запоминаются порядок дорожек и наложения
       nameEl.className = "name";
       valEl.className = "val";
+      valEl.style.width = VAL_W + "px";
 
       const subText = (d.unit ? d.unit + " · " : "") + fmtPeriod(d.periodMs);
       const nm = document.createElement("div");
@@ -298,6 +305,11 @@ function createViewer(cfg) {
     resetOrder: () => { if (order) order.reset(); },
     getCursors: () => ({ a: curA, b: curB }),
     getRange: () => range,
+    // setTexts — подписи из справочников; вызывать ДО build: от них зависит ширина колонки значений
+    setTexts: t => {
+      texts = t || {};
+      if (Object.keys(texts).length) VAL_W = 230;
+    },
     cursorsText,
   };
 }

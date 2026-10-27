@@ -62,7 +62,7 @@
     const LANE_H = 80;
     const BIT_H = 44; // дорожка аварийного бита ниже: там только 0 и 1
     const NAME_W = 130;
-    const VAL_W = 110;
+    let VAL_W = 110; // шире, если есть подписи из справочников (см. main)
     const COLOR_A = ISA.cursorA;
     const COLOR_B = ISA.cursorB;
     const colors = ISA.traces;
@@ -139,6 +139,11 @@
       const plcKey = (await initPLCs()) || "default";
 
       const groups = await (await fetch("api/groups" + plcQ)).json();
+      // Тексты справочников: {"Step": {"12": "Зажим закрыт"}} — подписи значений (шаги, коды).
+      // Не загрузились — не беда: значения покажутся числами, как раньше.
+      let texts = {};
+      try { texts = await (await fetch("api/dicts" + plcQ)).json(); } catch (e) { }
+      if (Object.keys(texts).length) VAL_W = 230; // место под «12 · Зажим закрыт…»
 
       if (groups.length === 0) {
         setStatus("У этого ПЛК нет включённых сигналов — добавьте их на странице «Сигналы»", false);
@@ -284,11 +289,17 @@
         });
       }
 
+      // Значение с текстом из справочника, если он есть: «12 · Зажим закрыт»
+      function withText(l, v) {
+        const t = texts[l.name] && v != null ? texts[l.name][String(v)] : "";
+        return fmtVal(v) + (t ? " · " + t : "");
+      }
+
       // Значение сигнала дорожки l в момент t — по его собственным точкам
       function valueAt(l, t) {
         const x = view.x[l.gi], y = view.y[l.gi][l.si];
         const i = nearestIdx(x, t);
-        return i < 0 ? "—" : fmtVal(y[i]);
+        return i < 0 ? "—" : withText(l, y[i]);
       }
 
       // «12» или «12 / 7.5», если на дорожку наложен второй сигнал
@@ -298,7 +309,7 @@
       }
 
       function lastValues(l) {
-        const last = l => { const y = view.y[l.gi][l.si]; return y.length ? fmtVal(y[y.length - 1]) : "—"; };
+        const last = l => { const y = view.y[l.gi][l.si]; return y.length ? withText(l, y[y.length - 1]) : "—"; };
         const o = ovLane(l);
         return last(l) + (o ? " / " + last(o) : "");
       }
@@ -500,6 +511,7 @@
         row.dataset.name = d.name; // по имени запоминаются порядок дорожек и наложения
         nameEl.className = "name";
         valEl.className = "val";
+        valEl.style.width = VAL_W + "px";
 
         const isBit = d.kind !== "trend";
         const nm = document.createElement("div");

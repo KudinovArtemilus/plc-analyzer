@@ -620,3 +620,18 @@ table.limits td.num {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+
+/* ---------- Подписи из справочников (28g) ---------- */
+
+/* «12 · Зажим закрыт, ждём стол» — длинный текст обрезается многоточием, а не вылезает на график */
+.lane .val {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* «описать» у кода, которого ещё нет в справочнике */
+a.describe {
+  font-size: 12px;
+  margin-left: 6px;
+}

@@ -16,6 +16,8 @@ type eventView struct {
 	PLC             string
 	Signal, Message string
 	PlotSig         string // какой бит вывести дорожкой по кнопке «на график»; пусто — кнопки нет
+	CodeText        string // текст кода ошибки из справочника: «перегрузка по току»
+	Describe        string // кода нет в справочнике сигнала — ссылка «описать» (форма с подставленным кодом)
 	Kind            string // «авария» / «предупреждение»
 	Warn            bool   // предупреждение (жёлтое), иначе авария (красная)
 	Active          bool   // ещё не ушла
@@ -101,8 +103,10 @@ func (s *Server) alarmsPanel(w http.ResponseWriter, r *http.Request) {
 
 	views := make([]eventView, len(list))
 	alarms, warns := 0, 0
+	texts := s.lookup(r.Context(), plcID) // коды ошибок → тексты из справочников
 	for i, e := range list {
 		views[i] = toView(e, "", now)
+		texts.applyCode(&views[i])
 		if views[i].Warn {
 			warns++
 		} else {
@@ -157,8 +161,10 @@ func (s *Server) eventViews(r *http.Request, eq eventsQuery) ([]eventView, error
 
 	now := time.Now()
 	out := make([]eventView, len(list))
+	ls := &lookups{s: s, ctx: r.Context(), m: map[int64]dictLookup{}} // журнал бывает по всем ПЛК
 	for i, e := range list {
 		out[i] = toView(e, names[e.PLCID], now)
+		ls.apply(&out[i], e)
 	}
 	return out, nil
 }
