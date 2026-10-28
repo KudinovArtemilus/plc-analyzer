@@ -85,8 +85,9 @@
             <tr{{if .Long}} class="warn-row" {{end}}>
                 <td class="mono">{{.From}}</td>
                 <td><b class="mono">{{.Value}}</b>{{if .Text}} · {{.Text}}{{end}}</td>
-                <td class="num">{{if .CutStart}}<span title="начало не видно: шаг уже шёл">…</span>{{end}}{{.Dur}}{{if
-                    .CutEnd}}<span title="конец не виден: запись кончилась или оборвалась связь">…</span>{{end}}</td>
+                <td class="num">{{if .CutStart}}<span
+                        title="начало не видно: шаг уже шёл">…</span>{{end}}{{.Dur}}{{if.CutEnd}}<span
+                        title="конец не виден: запись кончилась или оборвалась связь">…</span>{{end}}</td>
                 </tr>
                 {{end}}
         </tbody>
