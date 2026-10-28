@@ -99,3 +99,16 @@ func TestSetsPages(t *testing.T) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+// Ошибка при сохранении (занятое имя) — галочки остаются такими, как их отметили
+func TestSetSaveKeepsChecks(t *testing.T) {
+	w := httptest.NewRecorder()
+	render(w, "set", setsView{
+		PLC: store.PLC{ID: 1}, Set: store.SignalSet{ID: 2, Name: "Стол"}, Err: "имя занято",
+		Signals: markRows([]store.SignalRow{{ID: 7, Name: "A"}, {ID: 8, Name: "B"}}, []int64{8}),
+	})
+	b := strings.Join(strings.Fields(w.Body.String()), " ")
+	if !strings.Contains(b, `value="8" id="sig8" checked`) || strings.Contains(b, `value="7" id="sig7" checked`) {
+		t.Fatalf("отметки:\n%s", b)
+	}
+}

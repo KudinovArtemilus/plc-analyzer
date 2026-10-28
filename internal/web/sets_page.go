@@ -18,9 +18,29 @@ type setsView struct {
 	List    []store.SignalSet
 	Name    string // форма «новый набор» (при ошибке не стираем введённое)
 	Err     string
-	Set     store.SignalSet   // открытый набор
-	Signals []store.SignalRow // все сигналы ПЛК — галочки
-	In      map[int64]bool    // какие отмечены
+	Set     store.SignalSet // открытый набор
+	Signals []setRow        // все сигналы ПЛК — строки с галочками
+}
+
+// setRow — сигнал и отметка «в наборе». store.SignalRow ВСТРОЕН (без имени поля):
+// его поля доступны напрямую — в шаблоне {{.Name}}, {{.ID}}, как у самого сигнала.
+// Отметку считаем в Go, а не в шаблоне: шаблону остаётся простое {{if .In}}.
+type setRow struct {
+	store.SignalRow
+	In bool
+}
+
+// markRows — все сигналы ПЛК с отметками тех, что в списке ids
+func markRows(all []store.SignalRow, ids []int64) []setRow {
+	in := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		in[id] = true
+	}
+	rows := make([]setRow, len(all))
+	for i, sig := range all {
+		rows[i] = setRow{SignalRow: sig, In: in[sig.ID]}
+	}
+	return rows
 }
 
 // setsData — общее для обеих страниц: ПЛК, список ПЛК, наборы
@@ -82,16 +102,20 @@ func (s *Server) setSave(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	v.Set.Name = r.PostForm.Get("name")
 	v.Set.Signals = nil
-	v.In = map[int64]bool{}
 	for _, str := range r.PostForm["sig"] { // у галочек одно имя — значения приходят списком
 		if id, err := strconv.ParseInt(str, 10, 64); err == nil {
 			v.Set.Signals = append(v.Set.Signals, id)
-			v.In[id] = true
 		}
 	}
 	if err := s.Store.SaveSet(r.Context(), who(r), v.Set); err != nil {
 		v.Err = err.Error()
-		render(w, "set", v) // отмеченное не теряется: форма покажет то, что прислали
+		// Отмеченное не теряется: форма покажет то, что прислали, а не то, что в базе
+		all := make([]store.SignalRow, len(v.Signals))
+		for i, row := range v.Signals {
+			all[i] = row.SignalRow
+		}
+		v.Signals = markRows(all, v.Set.Signals)
+		render(w, "set", v)
 		return
 	}
 	http.Redirect(w, r, "/sets?plc="+strconv.FormatInt(v.PLC.ID, 10), http.StatusSeeOther)
@@ -130,14 +154,12 @@ func (s *Server) setFromPath(w http.ResponseWriter, r *http.Request) (setsView, 
 		return v, false
 	}
 	v.Set = set
-	if v.Signals, err = s.Store.Signals(r.Context(), set.PLCID); err != nil {
+	all, err := s.Store.Signals(r.Context(), set.PLCID)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return v, false
 	}
-	v.In = make(map[int64]bool, len(set.Signals))
-	for _, sid := range set.Signals {
-		v.In[sid] = true
-	}
+	v.Signals = markRows(all, set.Signals)
 	return v, true
 }
 

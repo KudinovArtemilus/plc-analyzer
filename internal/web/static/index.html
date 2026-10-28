@@ -25,6 +25,11 @@
   <div id="shelveForm"></div>
 
   <div id="toolbar">
+    <label title="набор сигналов — «окно графиков»; наборы настраиваются на странице «Наборы»">Набор:
+      <select id="setSel">
+        <option value="">все сигналы</option>
+      </select></label>
+    <a href="/sets" id="lnkSets" class="edit" title="создать или изменить наборы">⚙</a>
     Окно:
     <button data-win="60" class="active">1 мин</button>
     <button data-win="120">2 мин</button>
@@ -39,6 +44,7 @@
       порядок дорожек · ⊕ — наложить второй сигнал</span>
   </div>
   <div id="alarmPick" class="panel-form" hidden></div>
+  <div id="setNote" class="note" hidden></div>
   <div id="statusRow">
     <span id="status">подключение…</span>
     <span id="hoverTime"></span>
@@ -58,6 +64,10 @@
     // ПЛК страницы: из адреса /?plc=2, иначе сервер возьмёт первый
     const PLC_ID = new URLSearchParams(location.search).get("plc") || "";
     const plcQ = PLC_ID ? "?plc=" + encodeURIComponent(PLC_ID) : "";
+    // Набор сигналов («окно графиков»): /?plc=1&set=3. Нет — все сигналы, как раньше.
+    // Набор в адресе — значит, его можно открыть в отдельной вкладке или на другом мониторе
+    // и добавить в закладки.
+    const SET_ID = new URLSearchParams(location.search).get("set") || "";
 
     const MAX_S = 600;
     const LANE_H = 80;
@@ -106,6 +116,7 @@
       sel.value = current;
       document.getElementById("lnkSignals").href = "/signals?plc=" + current;
       document.getElementById("lnkEvents").href = "/events?plc=" + current;
+      document.getElementById("lnkSets").href = "/sets?plc=" + current;
       sel.onchange = () => { location.href = "/?plc=" + sel.value; };
       return current; // номер ПЛК — под ним запоминается порядок дорожек
     }
@@ -136,8 +147,38 @@
       return v == null ? "—" : Number.isInteger(v) ? String(v) : String(+v.toFixed(3));
     }
 
+    // ---------- Выбор набора ----------
+
+    // initSets заполняет выбор наборов и возвращает открытый набор (или null — все сигналы).
+    // Наборы не загрузились (старый сервер, ошибка) — работаем как раньше, со всеми сигналами.
+    async function initSets(plcKey) {
+      let sets = [];
+      try { sets = await (await fetch("api/sets" + plcQ)).json(); } catch (e) { }
+      const sel = document.getElementById("setSel");
+      sets.forEach(s => {
+        const o = document.createElement("option");
+        o.value = s.id;
+        o.textContent = `${s.name} (${s.names.length})`;
+        sel.appendChild(o);
+      });
+      const set = sets.find(s => String(s.id) === SET_ID) || null;
+      sel.value = set ? String(set.id) : "";
+      // Смена набора — новая страница: состав дорожек задаётся при построении (как и смена ПЛК)
+      sel.onchange = () => {
+        const q = new URLSearchParams({ plc: plcKey });
+        if (sel.value) q.set("set", sel.value);
+        location.href = "/?" + q;
+      };
+      if (set) document.title = set.name + " — PLC Analyzer"; // вкладки различаются по имени
+      return { set, missing: SET_ID !== "" && !set };
+    }
+
     async function main() {
       const plcKey = (await initPLCs()) || "default";
+      const { set, missing } = await initSets(plcKey);
+      // Порядок дорожек и наложения запоминаются отдельно для каждого набора:
+      // в «Гидравлике» свой порядок, в «Столе» свой
+      const laneKey = set ? plcKey + ":set" + set.id : plcKey;
 
       const groups = await (await fetch("api/groups" + plcQ)).json();
       // Тексты справочников: {"Step": {"12": "Зажим закрыт"}} — подписи значений (шаги, коды).
@@ -164,19 +205,41 @@
 
       const laneDefs = [];
       const alarmSignals = []; // все аварии и предупреждения ПЛК — для списка выбора
+      // В наборе показываем ровно его сигналы — и скрытые, и аварии: набор — это явный выбор
+      const inSet = set ? new Set(set.names) : null;
       groups.forEach((g, gi) =>
         g.names.forEach((name, si) => {
           const kind = (g.kinds && g.kinds[si]) || "trend";
-          if (kind === "trend" && g.hidden && g.hidden[si]) return;
-          if (kind !== "trend") {
-            alarmSignals.push({ name, kind });
-            if (!shown.has(name)) return;
+          if (kind !== "trend") alarmSignals.push({ name, kind });
+          if (inSet) {
+            if (!inSet.has(name)) return;
+          } else {
+            if (kind === "trend" && g.hidden && g.hidden[si]) return;
+            if (kind !== "trend" && !shown.has(name)) return;
           }
           // bool: бит (0/1) или целое число — код ошибки; старый сервер без bits — считаем битом
           const bool = !g.bits || g.bits[si] !== false;
           laneDefs.push({ gi, si, name, kind, bool, periodMs: g.period_ms });
         }));
-      if (groups.length && !laneDefs.length) {
+      // Пояснения про набор — отдельной строкой: строку статуса поток перепишет на «Live»
+      const setNote = text => {
+        const el = document.getElementById("setNote");
+        el.textContent = text;
+        el.hidden = false;
+      };
+      if (missing) {
+        setNote("Набора с номером " + SET_ID + " нет — возможно, его удалили. Показаны все сигналы.");
+      }
+      if (set) {
+        // Сигналы набора, которых нет в опросе (выключены) — сказать, а не молча пропустить
+        const polled = new Set(laneDefs.map(d => d.name));
+        const off = set.names.filter(n => !polled.has(n));
+        if (!laneDefs.length) {
+          setNote("В наборе «" + set.name + "» нет опрашиваемых сигналов — отметьте их на странице «Наборы».");
+        } else if (off.length) {
+          setNote("Не опрашиваются (выключены на странице «Сигналы»): " + off.join(", "));
+        }
+      } else if (groups.length && !laneDefs.length) {
         setStatus("У этого ПЛК только аварии и предупреждения (" + alarmSignals.length +
           ") — их состояние на панели аварий; дорожкой — кнопка «■ Аварии на графике»", false);
       }
@@ -198,7 +261,8 @@
       // Список выбора: галочка у каждой аварии и предупреждения
       const btnAlarms = document.getElementById("btnAlarms");
       const pickEl = document.getElementById("alarmPick");
-      if (alarmSignals.length) {
+      // В наборе аварии на графике задаёт сам набор — выбор «■ Аварии на графике» не нужен
+      if (alarmSignals.length && !set) {
         btnAlarms.hidden = false;
         const n = alarmSignals.filter(a => shown.has(a.name)).length;
         btnAlarms.textContent = "■ Аварии на графике" + (n ? " (" + n + ")" : "");
@@ -223,7 +287,7 @@
       });
       // Уже показанные дорожкой — кнопку прячем: сейчас и после каждого обновления панели
       const markPanel = () => document.querySelectorAll("#alarms button[data-sig]")
-        .forEach(b => { b.hidden = shown.has(b.dataset.sig); });
+        .forEach(b => { b.hidden = !!set || shown.has(b.dataset.sig); });
       markPanel();
       document.body.addEventListener("htmx:afterSwap", e => {
         if (e.detail.target.id === "alarms") markPanel();
@@ -523,8 +587,8 @@
         pr.textContent = (isBit ? (d.kind === "warning" ? "предупр. · " : "авария · ") : "") + fmtPeriod(d.periodMs);
         nameEl.append(nm, pr);
         nameEl.title = d.name + " — каждые " + fmtPeriod(d.periodMs);
-        if (isBit) {
-          row.classList.add("bit");
+        if (isBit) row.classList.add("bit");
+        if (isBit && !set) { // в наборе дорожку убирают на странице «Наборы»
           const hide = document.createElement("button");
           hide.className = "bit-hide";
           hide.textContent = "✕";
@@ -546,9 +610,9 @@
       // Ось времени, перестановка дорожек и наложения
       if (lanes.length) {
         axisU = makeTimeAxis(lanesEl, plotWidth());
-        const order = makeSortable(lanesEl, plcKey);
+        const order = makeSortable(lanesEl, laneKey);
         document.getElementById("btnOrder").onclick = () => order.reset();
-        overlays = makeOverlays(lanesEl, plcKey, name => {
+        overlays = makeOverlays(lanesEl, laneKey, name => {
           const l = lanes.find(x => x.name === name);
           if (l) makePlot(l);
         });

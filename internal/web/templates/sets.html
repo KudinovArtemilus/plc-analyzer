@@ -103,8 +103,7 @@
             <tbody>
                 {{range .Signals}}
                 <tr class="{{if not .Enabled}}muted{{end}}">
-                    <td><input type="checkbox" name="sig" value="{{.ID}}" id="sig{{.ID}}" {{if index $.In
-                            .ID}}checked{{end}}></td>
+                    <td><input type="checkbox" name="sig" value="{{.ID}}" id="sig{{.ID}}" {{if .In}}checked{{end}}></td>
                     <td><label for="sig{{.ID}}"><b>{{.Name}}</b></label>
                         {{if not .Enabled}}<small>· выключен</small>{{end}}
                         {{if .Hidden}}<small>· скрыт</small>{{end}}</td>
