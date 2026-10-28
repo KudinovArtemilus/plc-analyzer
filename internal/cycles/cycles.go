@@ -117,12 +117,7 @@ func Summarize(cs []Cycle, incomplete int) Stat {
 		st.MinMs, st.MaxMs = min(st.MinMs, d), max(st.MaxMs, d)
 	}
 	st.MeanMs = st.WorkMs / int64(len(cs))
-	sort.Slice(ds, func(a, b int) bool { return ds[a] < ds[b] })
-	if m := len(ds) / 2; len(ds)%2 == 1 {
-		st.MedianMs = ds[m]
-	} else {
-		st.MedianMs = (ds[m-1] + ds[m]) / 2
-	}
+	st.MedianMs = medianOf(ds)
 	return st
 }
 
@@ -146,4 +141,103 @@ func SuggestHome(sum []steps.Stat) (home int64, ok bool) {
 		}
 	}
 	return 0, false
+}
+
+// ---------- Тренд и гистограмма (32c) ----------
+
+// medianOf — медиана; ds не меняет (сортирует копию)
+func medianOf(ds []int64) int64 {
+	if len(ds) == 0 {
+		return 0
+	}
+	s := append([]int64(nil), ds...)
+	sort.Slice(s, func(a, b int) bool { return s[a] < s[b] })
+	m := len(s) / 2
+	if len(s)%2 == 1 {
+		return s[m]
+	}
+	return (s[m-1] + s[m]) / 2
+}
+
+// RollingMedian — для каждого цикла медиана его окрестности из w циклов (w — нечётное):
+// линия «обычного» времени цикла по ходу смены. Одна задержка её не дёргает, а медленный
+// рост — например, к концу смены от нагрева масла — видно сразу.
+func RollingMedian(cs []Cycle, w int) []int64 {
+	out := make([]int64, len(cs))
+	ds := make([]int64, len(cs))
+	for i, c := range cs {
+		ds[i] = c.Dur()
+	}
+	half := w / 2
+	for i := range cs {
+		lo, hi := max(0, i-half), min(len(cs), i+half+1) // у краёв окно короче
+		out[i] = medianOf(ds[lo:hi])
+	}
+	return out
+}
+
+// Trend — как изменилось обычное время цикла за запись: медиана первой трети циклов
+// против медианы последней трети. Трети, а не первый и последний цикл: так одна случайная
+// задержка в начале или в конце не выдаст себя за тренд.
+type Trend struct {
+	FirstMs, LastMs int64 // обычный цикл в начале и в конце
+	OK              bool  // циклов достаточно (хотя бы 6), чтобы говорить о тренде
+}
+
+// TrendOf — тренд по циклам (в порядке времени)
+func TrendOf(cs []Cycle) Trend {
+	if len(cs) < 6 {
+		return Trend{}
+	}
+	third := len(cs) / 3
+	first, last := make([]int64, third), make([]int64, third)
+	for i := 0; i < third; i++ {
+		first[i] = cs[i].Dur()
+		last[i] = cs[len(cs)-third+i].Dur()
+	}
+	return Trend{FirstMs: medianOf(first), LastMs: medianOf(last), OK: true}
+}
+
+// Bin — столбец гистограммы: циклов длительностью [FromMs, ToMs)
+type Bin struct {
+	FromMs, ToMs int64
+	Count        int
+	Rest         bool // последний столбец «и дольше»: всё, что не поместилось в шкалу
+}
+
+// Histogram — распределение времени цикла по n столбцам от самого быстрого цикла
+// до 3 × медианы. Всё, что дольше, — в последний столбец «и дольше»: иначе одно зависание
+// на 10 минут сжало бы все обычные циклы в один столбик слева.
+func Histogram(cs []Cycle, n int) []Bin {
+	if len(cs) == 0 || n < 2 {
+		return nil
+	}
+	ds := make([]int64, len(cs))
+	lo, hi := cs[0].Dur(), cs[0].Dur()
+	for i, c := range cs {
+		ds[i] = c.Dur()
+		lo, hi = min(lo, ds[i]), max(hi, ds[i])
+	}
+	top := min(hi, 3*medianOf(ds))
+	rest := hi > top
+	cols := n
+	if rest {
+		cols = n - 1 // один столбец уходит под «и дольше»
+	}
+	width := max(1, (top-lo+int64(cols)-1)/int64(cols)) // с округлением вверх: top попадает в шкалу
+	bins := make([]Bin, cols)
+	for i := range bins {
+		bins[i] = Bin{FromMs: lo + int64(i)*width, ToMs: lo + int64(i+1)*width}
+	}
+	if rest {
+		bins = append(bins, Bin{FromMs: lo + int64(cols)*width, ToMs: hi, Rest: true})
+	}
+	for _, d := range ds {
+		i := int((d - lo) / width)
+		if i >= cols {
+			i = len(bins) - 1 // «и дольше» (или ровно верхняя граница без «и дольше»)
+		}
+		bins[i].Count++
+	}
+	return bins
 }

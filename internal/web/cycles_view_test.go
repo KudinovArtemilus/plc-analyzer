@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/KudinovArtemilus/plc-analyzer/internal/cycles"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/steps"
 )
 
@@ -47,6 +48,7 @@ func TestHomeByText(t *testing.T) {
 }
 
 func TestFillCycles(t *testing.T) {
+	// Пять циклов мало для тренда (нужно 6) — график есть, подписи тренда нет; проверяем и это
 	text := func(n int64) string {
 		return map[int64]string{0: "Базовая позиция", 12: "Зажим закрыт"}[n]
 	}
@@ -98,9 +100,37 @@ func TestFillCycles(t *testing.T) {
 	w := httptest.NewRecorder()
 	render(w, "steps", v)
 	b := strings.Join(strings.Fields(w.Body.String()), " ")
-	for _, want := range []string{`name="home"`, `value="0" selected`, "Циклы", "<b>7 с</b>", "1 мин 00 с (обычно 1 с)"} {
+	// </html> в конце — шаблон выполнился до конца: ошибка в середине шаблона (например, обращение
+	// к полю, которого нет) не роняет сервер, а молча обрывает страницу на полуслове
+	for _, want := range []string{`name="home"`, `value="0" selected`, "Циклы", "<b>7 с</b>",
+		"1 мин 00 с (обычно 1 с)", `<svg class="chart"`, `<polyline class="median"`, `class="long"`, "</html>"} {
 		if !strings.Contains(b, want) {
 			t.Errorf("страница: нет %q", want)
 		}
+	}
+}
+
+func TestCycleCharts(t *testing.T) {
+	// 12 циклов: обычные ~60 с, к концу ~70 с, одно зависание на 5 мин (не влезает в шкалу)
+	var cs []cycles.Cycle
+	var tm int64
+	for _, d := range []int64{60, 61, 59, 300, 60, 62, 64, 66, 69, 70, 71, 70} {
+		cs = append(cs, cycles.Cycle{From: tm, To: tm + d*1000})
+		tm += d*1000 + 20_000
+	}
+	var c cyclesView
+	fillCycleCharts(&c, cs, 64_000)
+	ch := c.Chart
+	if len(ch.Points) != 12 || !ch.Points[3].Over || !ch.Points[3].Long || ch.Points[0].Long {
+		t.Fatalf("точки: %+v", ch.Points)
+	}
+	if !strings.Contains(ch.TrendText, "в начале записи — 1 мин 00 с") || !strings.Contains(ch.TrendText, "+") || !ch.TrendWarn {
+		t.Errorf("тренд: %q, предупреждение %v", ch.TrendText, ch.TrendWarn)
+	}
+	if n := len(ch.Bars); n != histBins || !ch.Bars[n-1].Rest || ch.Bars[n-1].Count != 1 {
+		t.Errorf("гистограмма: %d столбцов, последний %+v", n, ch.Bars[len(ch.Bars)-1])
+	}
+	if len(strings.Fields(ch.Line)) != 12 {
+		t.Errorf("линия медианы: %q", ch.Line)
 	}
 }

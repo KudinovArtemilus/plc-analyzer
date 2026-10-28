@@ -97,3 +97,65 @@ func TestSuggestHome(t *testing.T) {
 		t.Error("один проход — кандидата быть не должно")
 	}
 }
+
+// series — циклы заданной длительности (мс), подряд, с ожиданием 1 с между ними
+func series(ds ...int64) []Cycle {
+	var cs []Cycle
+	var t int64
+	for _, d := range ds {
+		cs = append(cs, Cycle{From: t, To: t + d})
+		t += d + 1000
+	}
+	return cs
+}
+
+func TestRollingMedian(t *testing.T) {
+	// Одна задержка (90 с) линию не дёргает; у краёв окно короче
+	got := RollingMedian(series(60, 61, 90, 62, 63), 3)
+	want := []int64{60, 61, 62, 63, 62}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("скользящая медиана: %v, ждали %v", got, want)
+		}
+	}
+}
+
+func TestTrendOf(t *testing.T) {
+	// Цикл к концу записи вырос с ~60 до ~70 с; задержка в начале на тренд не влияет
+	tr := TrendOf(series(60_000, 300_000, 61_000, 64_000, 66_000, 65_000, 70_000, 69_000, 71_000))
+	if !tr.OK || tr.FirstMs != 61_000 || tr.LastMs != 70_000 {
+		t.Errorf("тренд: %+v", tr)
+	}
+	if TrendOf(series(1, 2, 3, 4, 5)).OK {
+		t.Error("5 циклов — о тренде говорить рано")
+	}
+}
+
+func TestHistogram(t *testing.T) {
+	// Медиана 10 с → шкала до 30 с; зависание на 120 с — в столбце «и дольше»
+	cs := series(10_000, 10_000, 11_000, 9_000, 10_000, 12_000, 120_000)
+	bins := Histogram(cs, 5)
+	if len(bins) != 5 || !bins[4].Rest || bins[4].Count != 1 || bins[4].ToMs != 120_000 {
+		t.Fatalf("столбцы: %+v", bins)
+	}
+	total := 0
+	for _, b := range bins {
+		total += b.Count
+	}
+	if total != len(cs) {
+		t.Errorf("в столбцах %d циклов из %d", total, len(cs))
+	}
+	// 9–14,25 с — все обычные циклы в первом столбце (ширина (30-9)/4 = 5,25 с)
+	if bins[0].FromMs != 9_000 || bins[0].Count != 6 {
+		t.Errorf("первый столбец: %+v", bins[0])
+	}
+
+	// Без выбросов «и дольше» нет, самый долгий попадает в последний обычный столбец
+	bins = Histogram(series(10_000, 11_000, 12_000), 3)
+	if len(bins) != 3 || bins[2].Rest || bins[2].Count != 1 {
+		t.Errorf("без выбросов: %+v", bins)
+	}
+	if Histogram(nil, 10) != nil {
+		t.Error("без циклов — без гистограммы")
+	}
+}

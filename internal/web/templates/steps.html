@@ -150,6 +150,27 @@
         </tbody>
     </table>
 
+    {{with .Chart}}{{$c := .}}{{if .Points}}
+    {{if .TrendText}}<div class="bar{{if .TrendWarn}} warn{{end}}">{{.TrendText}}</div>{{end}}
+    <p><small>Время каждого цикла по ходу записи: точка — цикл, линия — обычное время (медиана соседних
+            циклов). Жёлтым — в 1,5 раза дольше обычного; у верхнего края — не влезли в шкалу.</small></p>
+    <svg class="chart" width="{{.W}}" height="{{.H}}" viewBox="0 0 {{.W}} {{.H}}" role="img" aria-label="время цикла по ходу записи">
+        {{range .YTicks}}<line class="grid" x1="{{$c.L}}" x2="{{$c.W}}" y1="{{.Pos}}" y2="{{.Pos}}"></line>
+        <text class="ylab" x="{{$c.L}}" y="{{.Pos}}" dx="-6" dy="4">{{.Label}}</text>{{end}}
+        {{range .XTicks}}<text class="xlab" x="{{.Pos}}" y="{{$c.H}}" dy="-4" text-anchor="{{.Anchor}}">{{.Label}}</text>{{end}}
+        <polyline class="median" points="{{.Line}}"></polyline>
+        {{range .Points}}<circle class="{{if .Long}}long{{else}}pt{{end}}" cx="{{.X}}" cy="{{.Y}}" r="{{if .Over}}4{{else}}2.5{{end}}"><title>{{.Tip}}</title></circle>{{end}}
+    </svg>
+
+    <p><small>Сколько циклов какой длительности. Узкий высокий столбец — станок работает ровно; длинный «хвост»
+            вправо — часть деталей идёт с задержками.</small></p>
+    <svg class="chart" width="{{.W}}" height="{{.H}}" viewBox="0 0 {{.W}} {{.H}}" role="img" aria-label="гистограмма времени цикла">
+        {{range .Bars}}<rect class="{{if .Rest}}bar-rest{{else}}bar{{end}}" x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}"><title>{{.Tip}}</title></rect>
+        {{if .Count}}<text class="cnt" x="{{.TextX}}" y="{{.Y}}" dy="-3">{{.Count}}</text>{{end}}{{end}}
+        {{range .BarsTicks}}<text class="xlab" x="{{.Pos}}" y="{{$c.H}}" dy="-4" text-anchor="{{.Anchor}}">{{.Label}}</text>{{end}}
+    </svg>
+    {{end}}{{end}}
+
     <p><small>Самые долгие циклы. «Затянулся» — шаг, который в этом цикле стоял дольше всего
             относительно своего обычного времени. Жёлтым — в 1,5 раза дольше обычного цикла.</small></p>
     <table class="stats">

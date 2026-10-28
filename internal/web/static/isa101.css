@@ -643,3 +643,61 @@ table.stats tr.warn-row td {
   background: var(--warn-bg);
   color: var(--warn-text);
 }
+
+
+/* ---------- Графики циклов (32c): SVG с сервера ---------- */
+svg.chart {
+  display: block;
+  margin: 6px 0 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  max-width: 100%;
+}
+
+svg.chart .grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+svg.chart .ylab {
+  font: 11px var(--mono);
+  fill: var(--text-2);
+  text-anchor: end;
+}
+
+svg.chart .xlab {
+  font: 11px var(--mono);
+  fill: var(--text-2);
+}
+
+/* выравнивание — атрибутом text-anchor */
+svg.chart .cnt {
+  font: 10px var(--mono);
+  fill: var(--text-2);
+  text-anchor: middle;
+}
+
+svg.chart .pt {
+  fill: var(--text-2);
+}
+
+/* Долгий цикл — предупреждение: жёлтый по смыслу ISA-101 */
+svg.chart .long {
+  fill: var(--warn);
+  stroke: var(--warn-text);
+  stroke-width: 0.5;
+}
+
+svg.chart .median {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+svg.chart .bar {
+  fill: var(--text-3);
+}
+
+svg.chart .bar-rest {
+  fill: var(--warn);
+}

@@ -26,7 +26,8 @@ type cyclesView struct {
 	Median, Mean, MinDur, MaxDur string
 	Work, WorkPct, Idle, IdlePct string
 	Longest                      []cycleView
-	Note                         string // почему циклов нет
+	Note                         string      // почему циклов нет
+	Chart                        cyclesChart // время цикла по ходу смены и гистограмма
 }
 
 type cycleView struct {
@@ -73,6 +74,8 @@ func fillCycles(v *stepsView, j []steps.Step, sum []steps.Stat, home string, bas
 	if baseMs > 0 {
 		c.WorkPct, c.IdlePct = pct(st.WorkMs, baseMs), pct(st.IdleMs, baseMs)
 	}
+
+	fillCycleCharts(c, cs, st.MedianMs)
 
 	for _, cy := range cycles.Longest(cs, longestMax) {
 		row := cycleView{
