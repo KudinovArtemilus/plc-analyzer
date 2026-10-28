@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -107,38 +110,148 @@ func (m *manager) shutdownAll() {
 	}
 }
 
+// options — параметры запуска из командной строки
+type options struct {
+	db, addr, admin, log string
+}
+
+// parseFlags разбирает параметры запуска. Справка: plc-analyzer.exe -h
+// Свой FlagSet, а не общий flag.Parse: те же флаги разбирает и команда install —
+// проверить их до того, как записать в настройки службы.
+func parseFlags(args []string) (options, error) {
+	var o options
+	fs := flag.NewFlagSet("plc-analyzer", flag.ContinueOnError)
+	fs.StringVar(&o.db, "db", "analyzer.db", "файл базы настроек (ПЛК, сигналы, слепки)")
+	fs.StringVar(&o.addr, "addr", "127.0.0.1:8080", "адрес веб-сервера; для доступа из сети — :8080")
+	fs.StringVar(&o.admin, "admin", "", "кроме этого ПК, менять настройки можно с этих адресов: 10.0.0.5,10.0.0.6")
+	fs.StringVar(&o.log, "log", "", `файл лога; по умолчанию plc-analyzer.log в папке -data; "-" — только консоль`)
+	fs.StringVar(&dataRoot, "data", `D:\plc-data`, "папка для записи данных")
+	fs.IntVar(&keepDays, "keep", 30, "сколько дней хранить записи смен")
+	fs.Usage = func() {
+		fmt.Fprintln(fs.Output(), `PLC Analyzer
+
+  plc-analyzer.exe [параметры]            — работа в окне (Ctrl+C — остановка)
+  plc-analyzer.exe install [параметры]    — установить службу Windows с этими параметрами
+  plc-analyzer.exe uninstall | start | stop | status
+
+Параметры:`)
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return o, err
+	}
+	if fs.NArg() > 0 {
+		return o, fmt.Errorf("лишнее в командной строке: %v (параметры пишутся через дефис: -addr :8080)", fs.Args())
+	}
+
+	// Лог по умолчанию — рядом с записями: одно место для всего, что пишет анализатор,
+	// и вне папки с кодом (в логе IP-адреса ПЛК — на GitHub ему нельзя).
+	// Это файл в корне папки данных, а не папка: папки там — это ПЛК.
+	if o.log == "" {
+		o.log = filepath.Join(dataRoot, "plc-analyzer.log")
+	}
+	return o, nil
+}
+
+// main решает, КАК запущена программа:
+//   - «plc-analyzer.exe install …» и другие команды — управление службой, и сразу выход;
+//   - запущена Windows как служба — работа под управлением диспетчера служб;
+//   - иначе — работа в окне до Ctrl+C.
+//
+// Вся работа анализатора — в run, одна и та же во всех режимах.
 func main() {
-	// Параметры запуска. Справка: plc-analyzer.exe -h
-	dbPath := flag.String("db", "analyzer.db", "файл базы настроек (ПЛК, сигналы, слепки)")
-	addr := flag.String("addr", "127.0.0.1:8080", "адрес веб-сервера; для доступа из сети — :8080")
-	admin := flag.String("admin", "", "кроме этого ПК, менять настройки можно с этих адресов: 10.0.0.5,10.0.0.6")
-	flag.StringVar(&dataRoot, "data", `D:\plc-data`, "папка для записи данных")
-	flag.IntVar(&keepDays, "keep", 30, "сколько дней хранить записи смен")
-	flag.Parse()
+	args := os.Args[1:]
+	if len(args) > 0 && isCommand(args[0]) {
+		if err := command(args[0], args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "ОШИБКА:", err)
+			os.Exit(1)
+		}
+		return
+	}
 
-	log.SetFlags(log.Ltime)
+	opt, err := parseFlags(args)
+	if errors.Is(err, flag.ErrHelp) {
+		return // попросили -h: справку FlagSet уже напечатал
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "ОШИБКА:", err)
+		os.Exit(2)
+	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
+	service := isService()
+	if service {
+		// Служба стартует в C:\Windows\System32. Переходим в папку программы,
+		// чтобы относительные пути (-db analyzer.db) значили то же, что при запуске руками.
+		if err := os.Chdir(exeDir()); err != nil {
+			os.Exit(1) // лога ещё нет, писать некуда; Windows покажет код выхода
+		}
+	}
+
+	closeLog, err := setupLog(opt.log)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "лог %s: %v\n", opt.log, err)
+		os.Exit(1)
+	}
+
+	if service {
+		err = runService(opt)
+	} else {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		err = run(ctx, opt)
+		stop()
+	}
+
+	if err != nil {
+		log.Printf("ОШИБКА: %v", err)
+	}
+	closeLog() // log.Fatal здесь не годится: он выходит сразу, и файл лога не закроется
+	if err != nil {
+		os.Exit(1)
+	}
+}
+
+// isCommand — первое слово командной строки — команда управления службой?
+func isCommand(s string) bool {
+	switch s {
+	case "install", "uninstall", "start", "stop", "status":
+		return true
+	}
+	return false
+}
+
+// exeDir — папка, где лежит plc-analyzer.exe
+func exeDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "."
+	}
+	return filepath.Dir(exe)
+}
+
+// run — вся работа анализатора, пока не отменят ctx. Ошибку запуска возвращает,
+// а не завершает программу сама: решать, что с ней делать, — тому, кто вызвал.
+func run(ctx context.Context, opt options) error {
+	wd, _ := os.Getwd()
+	log.Printf("PLC Analyzer: запуск · папка %s · база %s · лог %s", wd, opt.db, opt.log)
 
 	// 1. База
-	st, err := store.Open(*dbPath)
+	st, err := store.Open(opt.db)
 	if err != nil {
-		log.Fatalf("база: %v", err)
+		return fmt.Errorf("база: %w", err)
 	}
 	defer st.Close()
 
 	plcs, err := st.PLCs(ctx)
 	if err != nil {
-		log.Fatalf("база: %v", err)
+		return fmt.Errorf("база: %w", err)
 	}
 	if len(plcs) == 0 {
 		if err := seed(ctx, st); err != nil {
-			log.Fatalf("начальные настройки: %v", err)
+			return fmt.Errorf("начальные настройки: %w", err)
 		}
 		log.Println("база пустая — создан пример ПЛК 192.168.0.10; укажите свой адрес на странице «ПЛК»")
 		if plcs, err = st.PLCs(ctx); err != nil {
-			log.Fatalf("база: %v", err)
+			return fmt.Errorf("база: %w", err)
 		}
 	}
 
@@ -150,11 +263,20 @@ func main() {
 		}
 	}
 
-	// 2. Веб и менеджер ПЛК
-	admins, bad := web.ParseAdmins(*admin)
+	admins, bad := web.ParseAdmins(opt.admin)
 	if len(bad) > 0 {
-		log.Fatalf("-admin: не IP-адрес: %v", bad) // опечатку лучше увидеть сразу, а не «почему не пускает»
+		return fmt.Errorf("-admin: не IP-адрес: %v", bad) // опечатку лучше увидеть сразу, а не «почему не пускает»
 	}
+
+	// 2. Порт занимаем ДО запуска опроса. Занят — значит, скорее всего, анализатор
+	// уже работает (служба или другое окно). Два анализатора писали бы одни и те же
+	// файлы смен, поэтому второй не запускается совсем.
+	ln, err := net.Listen("tcp", opt.addr)
+	if err != nil {
+		return fmt.Errorf("веб %s: %w — возможно, анализатор уже запущен (служба или другое окно)", opt.addr, err)
+	}
+
+	// 3. Веб и менеджер ПЛК
 	srv := &web.Server{
 		Store: st, PLC: plcs[0],
 		DataRoot: dataRoot, Cache: archive.NewCache(3),
@@ -171,23 +293,41 @@ func main() {
 
 	m.sync()
 
+	hs := &http.Server{
+		Handler: srv.Handler(),
+		// Контекст каждого запроса — дочерний от ctx. При остановке он отменяется,
+		// и «вечные» запросы (поток Live, /api/stream) сами завершаются:
+		// иначе Shutdown ждал бы их до таймаута.
+		BaseContext: func(net.Listener) context.Context { return ctx },
+	}
 	go func() {
-		log.Printf("веб: http://%s  ·  данные: %s  ·  хранение: %d дней", *addr, dataRoot, keepDays)
-		logAccess(*addr, admins)
-		if err := http.ListenAndServe(*addr, srv.Handler()); err != nil {
-			log.Printf("ВЕБ-СЕРВЕР НЕ ЗАПУЩЕН: %v", err)
+		log.Printf("веб: http://%s  ·  данные: %s  ·  хранение: %d дней", opt.addr, dataRoot, keepDays)
+		logAccess(opt.addr, admins)
+		if err := hs.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("ВЕБ-СЕРВЕР ОСТАНОВЛЕН: %v", err)
 		}
 	}()
 
-	// 3. Главный цикл
+	// 4. Главный цикл
 	var debounce <-chan time.Time
 	for {
 		select {
 		case <-ctx.Done():
 			log.Println("остановка: дописываю данные на диск…")
+			t0 := time.Now()
+
+			// Сначала веб: новые запросы не принимаем, текущие дожидаемся (до 5 с).
+			// context.Background, а не ctx: ctx уже отменён, с ним Shutdown не ждал бы ничего.
+			sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if err := hs.Shutdown(sctx); err != nil {
+				log.Printf("веб: остановлен не чисто: %v", err)
+			}
+			cancel()
+
+			// Потом опрос и запись: файлы смен закрываются целыми
 			m.shutdownAll()
-			log.Println("остановлено")
-			return
+			log.Printf("остановлено за %v", time.Since(t0).Round(time.Millisecond))
+			return nil // база закроется в defer st.Close()
 		case <-reload:
 			debounce = time.After(time.Second)
 		case <-debounce:
