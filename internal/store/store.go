@@ -134,6 +134,8 @@ var migrations = []string{
 
 	// 7: наборы сигналов — «окна графиков» (sets.go)
 	setsSchema,
+	// 8: настройка паспорта циклов — шаг, режим, исходный шаг (passport.go)
+	passportSchema,
 }
 
 func Open(path string) (*Store, error) {

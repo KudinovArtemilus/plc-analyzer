@@ -200,6 +200,26 @@
     {{end}}
     {{end}}
 
+    {{if .Cycles.Home}}
+    <h4>Паспорт циклов — для прогноза</h4>
+    <p><small class="muted">Служба по каждой смене записывает признаки каждого цикла (время шагов, давление,
+            температура, положения, включения битов) в <code>D:\plc-data\&lt;ПЛК&gt;\passport</code> — по ним видны тренды
+            за месяцы. Циклы ищутся так, как настроено здесь.</small></p>
+    <p>{{if .Passport.Saved}}Сейчас: {{.Passport.Saved}}{{if .Passport.Same}} — <b>это и выбрано на странице</b>{{end}}
+        {{else}}<span class="muted">Для этого ПЛК паспорт не настроен.</span>{{end}}</p>
+    {{if .Passport.ShowSave}}
+    <form method="post" action="/passport" class="panel-form edit">
+        <input type="hidden" name="plc" value="{{.PLC}}">
+        <input type="hidden" name="file" value="{{.File}}">
+        <input type="hidden" name="sig" value="{{.Sig}}">
+        <input type="hidden" name="min" value="{{.Min}}">
+        <input type="hidden" name="mode" value="{{.Mode}}">
+        <input type="hidden" name="mv" value="{{.Passport.ModeVal}}">
+        <input type="hidden" name="home" value="{{.Passport.Home}}">
+        <button type="submit">Сохранить эти настройки для паспорта</button>
+    </form>
+    {{end}}{{end}}
+
     <h4>Журнал</h4>
     <p><small>{{.JournalNote}}</small></p>
     {{if .Journal}}

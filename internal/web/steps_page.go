@@ -47,7 +47,8 @@ type stepsView struct {
 	Mode     string         // выбранный сигнал режима — его тоже показать на графике
 	ModeVal  string         // выбранное значение режима (как в адресе)
 
-	Cycles cyclesView // раздел «Циклы»
+	Cycles   cyclesView   // раздел «Циклы»
+	Passport passportView // блок «Паспорт циклов»: сохранить выбор для службы (34a-2)
 
 	From, To, Dur string // запись
 	Passes        int    // всего проходов (строк журнала)
@@ -186,6 +187,7 @@ func (s *Server) stepsPage(w http.ResponseWriter, r *http.Request) {
 			baseMs = j[len(j)-1].To - j[0].From
 		}
 		fillCycles(&v, j, steps.Summary(j), q.Get("home"), baseMs, text)
+		s.fillPassport(r.Context(), &v, l)
 	}
 	render(w, "steps", v)
 }
