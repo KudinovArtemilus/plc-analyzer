@@ -12,10 +12,11 @@ import (
 
 // ---------- Страница «Шаги»: журнал шаговой цепочки по файлу смены ----------
 //
-// GET /steps?plc=&file=&sig=&min=&mode=&mv=
+// GET /steps?plc=&file=&sig=&min=&mode=&mv=&home=
 //   file — файл смены (как в «Истории»), sig — сигнал номера шага,
 //   min  — показывать в журнале проходы дольше min секунд; пусто — «необычно долгие»,
-//   mode — сигнал режима работы, mv — его значение: считать только время в этом режиме.
+//   mode — сигнал режима работы, mv — его значение: считать только время в этом режиме,
+//   home — исходный шаг для циклов; пусто — программа предложит сама.
 //
 // Считаем по ВСЕМ точкам файла, а не по прореженным для графика: короткий шаг
 // на 200 мс между точками обзора потерялся бы.
@@ -44,6 +45,9 @@ type stepsView struct {
 	Modes    []stepStatView // время по режимам за запись
 	ModeNote string         // «только в режиме «Автомат»: 6 ч 20 мин из 12 ч»
 	Mode     string         // выбранный сигнал режима — его тоже показать на графике
+	ModeVal  string         // выбранное значение режима (как в адресе)
+
+	Cycles cyclesView // раздел «Циклы»
 
 	From, To, Dur string // запись
 	Passes        int    // всего проходов (строк журнала)
@@ -115,7 +119,7 @@ func (s *Server) stepsPage(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	v := stepsView{PLC: s.reqPLCID(r), File: q.Get("file"), Sig: q.Get("sig"), Min: strings.TrimSpace(q.Get("min"))}
 	mode, mv := q.Get("mode"), q.Get("mv")
-	v.Mode = mode
+	v.Mode, v.ModeVal = mode, mv
 
 	f, err := s.openFile(r, v.File)
 	if err != nil {
@@ -177,6 +181,12 @@ func (s *Server) stepsPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	fillSteps(&v, j, minMs, text, baseMs)
+	if len(j) > 0 {
+		if baseMs == 0 {
+			baseMs = j[len(j)-1].To - j[0].From
+		}
+		fillCycles(&v, j, steps.Summary(j), q.Get("home"), baseMs, text)
+	}
 	render(w, "steps", v)
 }
 
@@ -196,7 +206,7 @@ func fillModes(v *stepsView, mj []steps.Step, mv string, text func(int64) string
 		v.ModeVals = append(v.ModeVals, valOption{Value: st.Value, Text: text(st.Value),
 			Selected: selected && st.Value == want})
 	}
-	sort.Slice(v.ModeVals, func(a, b int) bool { return v.ModeVals[a].Value < v.ModeVals[b].Value })
+	sortValOptions(v.ModeVals)
 	if !selected {
 		return j, 0
 	}
@@ -209,6 +219,11 @@ func fillModes(v *stepsView, mj []steps.Step, mv string, text func(int64) string
 	}
 	v.ModeNote = "только в режиме «" + name + "»: " + fmtStatDur(in) + " из " + fmtStatDur(mj[len(mj)-1].To-mj[0].From)
 	return steps.Clip(j, spans), in
+}
+
+// sortValOptions — значения в выборе по возрастанию номера
+func sortValOptions(vs []valOption) {
+	sort.Slice(vs, func(a, b int) bool { return vs[a].Value < vs[b].Value })
 }
 
 // statRows — сводка в строки таблицы; base — от чего считать долю, мс

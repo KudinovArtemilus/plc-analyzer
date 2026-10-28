@@ -107,6 +107,78 @@
     <p><small class="muted">«Обычно» и «среднее» — по полным проходам. «≥» — проход обрезан краем записи или
             обрывом связи: на самом деле мог быть дольше.</small></p>
 
+    <h4>Циклы — от выхода из исходного шага до возврата в него</h4>
+    <form method="get" action="/steps" class="panel-form">
+        <input type="hidden" name="plc" value="{{.PLC}}">
+        <input type="hidden" name="file" value="{{.File}}">
+        <input type="hidden" name="sig" value="{{.Sig}}">
+        <input type="hidden" name="min" value="{{.Min}}">
+        <input type="hidden" name="mode" value="{{.Mode}}">
+        <input type="hidden" name="mv" value="{{.ModeVal}}">
+        <b>Исходный шаг:</b>
+        <select name="home" onchange="this.form.submit()">
+            {{range .Cycles.Home}}<option value="{{.Value}}" {{if .Selected}}selected{{end}}>{{.Value}}{{if .Text}} · {{.Text}}{{end}}</option>{{end}}
+        </select>
+        {{if .Cycles.HomeAuto}}<small class="muted">предложен программой — по подписи в справочнике («исходное», «базовая
+            позиция») или как шаг, где цепочка дольше всего стоит; если не тот — выберите свой, выбор запомнится</small>{{end}}
+    </form>
+    {{with .Cycles}}
+    {{if .Note}}<p class="muted">{{.Note}}</p>{{end}}
+    {{if .Count}}
+    <table class="stats">
+        <thead>
+            <tr>
+                <th>Циклов</th>
+                <th>Обычно (медиана)</th>
+                <th>Среднее</th>
+                <th>Самый быстрый</th>
+                <th>Самый долгий</th>
+                <th>Работа (сумма циклов)</th>
+                <th>Ожидание в исходном шаге</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td class="num">{{.Count}}{{if .Incomplete}} <small class="muted" title="неполных: внутри обрыв связи, смена режима или край записи">+{{.Incomplete}} неполн.</small>{{end}}</td>
+                <td class="num"><b>{{.Median}}</b></td>
+                <td class="num">{{.Mean}}</td>
+                <td class="num">{{.MinDur}}</td>
+                <td class="num">{{.MaxDur}}</td>
+                <td class="num">{{.Work}}{{if .WorkPct}} · {{.WorkPct}}{{end}}</td>
+                <td class="num">{{.Idle}}{{if .IdlePct}} · {{.IdlePct}}{{end}}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <p><small>Самые долгие циклы. «Затянулся» — шаг, который в этом цикле стоял дольше всего
+            относительно своего обычного времени. Жёлтым — в 1,5 раза дольше обычного цикла.</small></p>
+    <table class="stats">
+        <thead>
+            <tr>
+                <th>Начало</th>
+                <th>Цикл</th>
+                <th>Шагов</th>
+                <th>Затянулся</th>
+                <th>Ожидание перед ним</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Longest}}
+            <tr{{if .Long}} class="warn-row" {{end}}>
+                <td class="mono">{{.From}}</td>
+                <td class="num">{{.Dur}}</td>
+                <td class="num">{{.Passes}}</td>
+                <td>{{.Slow}}</td>
+                <td class="num">{{.Idle}}</td>
+                <td><a href="{{.Link}}" target="_blank" title="цикл на графике: курсор A — начало, B — конец">график ↗</a></td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{end}}
+    {{end}}
+
     <h4>Журнал</h4>
     <p><small>{{.JournalNote}}</small></p>
     {{if .Journal}}
@@ -140,7 +212,7 @@
         (function () {
             const q = new URLSearchParams(location.search);
             const key = "plca:steps:" + (q.get("plc") || "");
-            const keys = ["sig", "mode", "mv"];
+            const keys = ["sig", "mode", "mv", "home"];
             try {
                 if (keys.some(k => q.has(k))) {
                     const save = {};
