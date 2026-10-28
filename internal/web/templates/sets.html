@@ -1,0 +1,128 @@
+{{define "setsnav"}}
+<nav><a href="/?plc={{.PLC.ID}}">← Графики</a> <a href="/plcs">ПЛК</a>
+    <a href="/signals?plc={{.PLC.ID}}">Сигналы</a>
+    {{if .Set.ID}}<a href="/sets?plc={{.PLC.ID}}">Наборы</a>{{else}}<b>Наборы</b>{{end}}
+    <a href="/limits?plc={{.PLC.ID}}">Нормы</a> <a href="/dicts?plc={{.PLC.ID}}">Справочники</a>
+    <a href="/history?plc={{.PLC.ID}}">История</a> <a href="/events?plc={{.PLC.ID}}">События</a>
+</nav>
+{{end}}
+
+
+{{define "sets"}}
+<!doctype html>
+<html lang="ru">
+
+<head>
+    <meta charset="utf-8">
+    <title>Наборы — PLC Analyzer</title>
+    <link rel="stylesheet" href="/isa101.css">
+    <link rel="stylesheet" href="/access.css">
+</head>
+
+<body>
+    {{template "setsnav" .}}
+    <h3>Наборы сигналов ПЛК
+        <select onchange="location.href='/sets?plc=' + this.value">
+            {{range .PLCs}}<option value="{{.ID}}" {{if eq .ID $.PLC.ID}}selected{{end}}>{{.Name}} ({{.IP}})</option>
+            {{end}}
+        </select>
+    </h3>
+    <div class="note">Набор — «окно графиков»: например «Гидравлика» или «Стол». На Live, в «Истории» и в
+        слепках выбираете набор и видите только его сигналы. Каждый набор можно открыть в своей вкладке
+        или на своём мониторе. Наборы общие для всех ПК; один сигнал может быть в нескольких наборах.</div>
+
+    <form method="post" action="/sets?plc={{.PLC.ID}}" class="panel-form">
+        <b>Новый набор:</b>
+        <input name="name" value="{{.Name}}" size="30" placeholder="например: Гидравлика" required>
+        <button>Создать</button>
+        {{if .Err}}<span class="err">{{.Err}}</span>{{end}}
+    </form>
+
+    {{if not .List}}<p>Наборов пока нет.</p>{{else}}
+    <table>
+        <thead>
+            <tr>
+                <th>Набор</th>
+                <th>Сигналов</th>
+                <th>Сигналы</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .List}}
+            <tr>
+                <td><b>{{.Name}}</b></td>
+                <td class="mono">{{len .Names}}</td>
+                <td><small>{{range $i, $n := .Names}}{{if $i}}, {{end}}{{$n}}{{end}}</small></td>
+                <td>
+                    <a href="/?plc={{$.PLC.ID}}&set={{.ID}}" target="_blank">на графиках ↗</a>
+                    <a class="edit" href="/sets/{{.ID}}?plc={{$.PLC.ID}}">изменить</a>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{end}}
+</body>
+
+</html>
+{{end}}
+
+
+{{define "set"}}
+<!doctype html>
+<html lang="ru">
+
+<head>
+    <meta charset="utf-8">
+    <title>{{.Set.Name}} — набор сигналов</title>
+    <link rel="stylesheet" href="/isa101.css">
+    <link rel="stylesheet" href="/access.css">
+</head>
+
+<body>
+    {{template "setsnav" .}}
+    <h3>Набор «{{.Set.Name}}» <small class="muted">ПЛК {{.PLC.Name}}</small></h3>
+
+    <form method="post" action="/sets/{{.Set.ID}}?plc={{.PLC.ID}}">
+        <p><b>Имя:</b> <input name="name" value="{{.Set.Name}}" size="30" required>
+            {{if .Err}}<span class="err">{{.Err}}</span>{{end}}</p>
+
+        {{if not .Signals}}<p>У этого ПЛК нет сигналов — добавьте их на странице «Сигналы».</p>{{else}}
+        <table>
+            <thead>
+                <tr>
+                    <th><input type="checkbox" title="отметить все / снять все"
+                            onclick="this.form.querySelectorAll('[name=sig]').forEach(c => c.checked = this.checked)">
+                    </th>
+                    <th>Сигнал</th>
+                    <th>Тип</th>
+                    <th>Описание</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Signals}}
+                <tr class="{{if not .Enabled}}muted{{end}}">
+                    <td><input type="checkbox" name="sig" value="{{.ID}}" id="sig{{.ID}}" {{if index $.In
+                            .ID}}checked{{end}}></td>
+                    <td><label for="sig{{.ID}}"><b>{{.Name}}</b></label>
+                        {{if not .Enabled}}<small>· выключен</small>{{end}}
+                        {{if .Hidden}}<small>· скрыт</small>{{end}}</td>
+                    <td>{{kindTitle .Kind}}</td>
+                    <td>{{.Message}}{{if .Unit}} <small class="muted">{{.Unit}}</small>{{end}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{end}}
+        <p><button>Сохранить</button> <a href="/sets?plc={{.PLC.ID}}">отмена</a></p>
+    </form>
+
+    <form method="post" action="/sets/{{.Set.ID}}/delete?plc={{.PLC.ID}}" style="margin-top:24px"
+        onsubmit="return confirm('Удалить набор «{{.Set.Name}}»? Сами сигналы останутся.')">
+        <button>Удалить набор</button>
+    </form>
+</body>
+
+</html>
+{{end}}

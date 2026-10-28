@@ -131,6 +131,9 @@ var migrations = []string{
 
 	// 6: справочники «число → текст» и ссылка на справочник у сигнала (dicts.go)
 	dictsSchema,
+
+	// 7: наборы сигналов — «окна графиков» (sets.go)
+	setsSchema,
 }
 
 func Open(path string) (*Store, error) {

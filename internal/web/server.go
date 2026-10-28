@@ -121,6 +121,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /dicts/{id}/items/{v}/delete", s.dictItemDelete)
 	mux.HandleFunc("POST /dicts/{id}/delete", s.dictDelete)
 
+	// Наборы сигналов («окна графиков»)
+	mux.HandleFunc("GET /sets", s.setsPage)
+	mux.HandleFunc("POST /sets", s.setAdd)
+	mux.HandleFunc("GET /sets/{id}", s.setPage)
+	mux.HandleFunc("POST /sets/{id}", s.setSave)
+	mux.HandleFunc("POST /sets/{id}/delete", s.setDelete)
+	mux.HandleFunc("GET /api/sets", s.setsJSON)
+
 	// Нормы аналоговых сигналов
 	mux.HandleFunc("GET /limits", s.limitsPage)
 	mux.HandleFunc("GET /ui/limits/{id}", s.limitRow)
