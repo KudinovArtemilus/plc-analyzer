@@ -112,3 +112,20 @@ func TestSetSaveKeepsChecks(t *testing.T) {
 		t.Fatalf("отметки:\n%s", b)
 	}
 }
+
+// «История»: кнопки наборов в выборе сигналов; имена — JS-массивом, экранированы
+func TestPickSetButtons(t *testing.T) {
+	w := httptest.NewRecorder()
+	render(w, "pick", map[string]any{
+		"PLC": int64(1), "Rel": "x.pla", "Signals": []sigView{{Name: "P"}},
+		"Sets": []store.SignalSet{{ID: 4, Name: "Стол", Names: []string{"P", `Q"</script>`}}},
+	})
+	b := w.Body.String()
+	if !strings.Contains(b, ">Стол</button>") || !strings.Contains(b, `name="set"`) {
+		t.Fatalf("нет кнопки набора или поля set:\n%s", b)
+	}
+	// html/template сам экранирует данные внутри onclick: кавычка и </script> не ломают страницу
+	if strings.Contains(b, `Q"</script>`) {
+		t.Fatalf("имя сигнала не экранировано:\n%s", b)
+	}
+}

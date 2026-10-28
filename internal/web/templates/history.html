@@ -41,6 +41,16 @@
   {{end}}
 
   <script src="/htmx.min.js"></script>
+  <script>
+    // pickSet — отметить галочки: names — список имён (набор), null — все.
+    // id набора уходит на страницу просмотра: там у набора свой порядок дорожек.
+    // Сигналы набора, которых нет в этой записи (добавлены позже), просто не отметятся.
+    function pickSet(form, names, id) {
+      const want = names && new Set(names);
+      form.querySelectorAll("[name=s]").forEach(c => { c.checked = !want || want.has(c.value); });
+      form.set.value = id;
+    }
+  </script>
 </body>
 
 </html>
@@ -53,14 +63,20 @@
   <input type="hidden" name="file" value="{{.Rel}}">
   {{if .Damaged}}<div class="bar warn">▲ Файл оборван (например, отключали питание) — показана целая часть.</div>{{end}}
   <div>Записано: {{.From}} — {{.To}}</div>
+  {{if .Sets}}
+  <div class="pick-sets">Набор:
+    {{range .Sets}}<button type="button" onclick="pickSet(this.form, {{.Names}}, {{.ID}})">{{.Name}}</button>
+    {{end}}
+  </div>
+  {{end}}
+  <input type="hidden" name="set" value="">
   <div>
     {{range .Signals}}
     <label><input type="checkbox" name="s" value="{{.Name}}"> {{.Name}} <small>{{.Info}}</small></label>
     {{end}}
   </div>
-  <button type="button" onclick="this.form.querySelectorAll('[name=s]').forEach(c => c.checked = true)">все</button>
-  <button type="button" onclick="this.form.querySelectorAll('[name=s]').forEach(c => c.checked = false)">ни
-    одного</button>
+  <button type="button" onclick="pickSet(this.form, null, '')">все</button>
+  <button type="button" onclick="pickSet(this.form, [], '')">ни одного</button>
   <button>Показать выбранные</button>
 </form>
 {{end}}

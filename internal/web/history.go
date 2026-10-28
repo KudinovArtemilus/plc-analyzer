@@ -123,9 +123,11 @@ func (s *Server) historyPick(w http.ResponseWriter, r *http.Request) {
 		sigs = append(sigs, sigView{Name: ref.Name, Info: info})
 	}
 	from, to, _ := fileRange(f)
+	// Наборы ПЛК — кнопки «отметить набор». Не загрузились — галочки по одной, как раньше.
+	sets, _ := s.Store.Sets(r.Context(), s.reqPLCID(r))
 	render(w, "pick", map[string]any{
 		"PLC": s.reqPLCID(r), "Rel": rel, "Damaged": f.Damaged, "Signals": sigs,
-		"From": fmtMs(from), "To": fmtMs(to),
+		"From": fmtMs(from), "To": fmtMs(to), "Sets": sets,
 	})
 }
 

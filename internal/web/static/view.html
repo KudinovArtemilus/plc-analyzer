@@ -15,6 +15,10 @@
   <h3 id="title">История</h3>
 
   <div id="toolbar">
+    <label title="показать сигналы набора из этой записи">Набор:
+      <select id="setSel">
+        <option value="">выбранные сигналы</option>
+      </select></label>
     <button id="btnReset">⤢ Вся запись</button>
     <button id="btnOrder" title="вернуть дорожки в исходный порядок">↺ исходный порядок</button>
     <span id="export">
@@ -46,6 +50,7 @@
     const plcQ = plc ? "?plc=" + encodeURIComponent(plc) : "";
     const file = params.get("file");
     const names = params.getAll("s");
+    const setId = params.get("set") || ""; // открыто по набору — у набора свой порядок дорожек
     const statusEl = document.getElementById("status");
 
     // Ссылки меню ведут к тому же ПЛК
@@ -73,7 +78,8 @@
         updateExportInfo();
         if (window.statsChanged) statsChanged(); // открытая статистика пересчитается (stats.js)
       },
-      orderKey: plc || "default", // тот же порядок дорожек, что на Live этого ПЛК
+      // Тот же порядок дорожек, что на Live этого ПЛК; открыто по набору — что у набора на Live
+      orderKey: (plc || "default") + (setId ? ":set" + setId : ""),
     });
 
     // Параметры запроса к серверу: ПЛК, файл, сигналы и дополнительные поля
@@ -238,7 +244,34 @@
         : "прорежено для обзора (пики сохранены) — выделите участок, чтобы увидеть все точки");
     }
 
+    // ---------- Набор ----------
+    // Сменить набор — та же запись (файл или слепок), но сигналы набора. Сигналов набора,
+    // которых в записи нет (добавлены позже), сервер просто не покажет.
+    async function initSets() {
+      let sets = [];
+      try { sets = await (await fetch("api/sets" + plcQ)).json(); } catch (e) { return; }
+      const sel = document.getElementById("setSel");
+      sel.options[0].textContent = "выбранные сигналы (" + names.length + ")";
+      sets.forEach(s => {
+        const o = document.createElement("option");
+        o.value = s.id;
+        o.textContent = s.name;
+        sel.appendChild(o);
+      });
+      if (sets.some(s => String(s.id) === setId)) sel.value = setId;
+      sel.onchange = () => {
+        const q = new URLSearchParams(location.search);
+        const set = sets.find(s => String(s.id) === sel.value);
+        q.delete("s");
+        q.delete("set");
+        (set ? set.names : names).forEach(n => q.append("s", n));
+        if (set) q.set("set", set.id);
+        location.href = "/view.html?" + q;
+      };
+    }
+
     async function main() {
+      initSets(); // не ждём: выбор набора заполнится, пока грузятся данные
       if (!file || names.length === 0) {
         setStatus("Не выбраны файл или сигналы — вернитесь к списку файлов", true);
         return;
@@ -246,6 +279,10 @@
       const resp = await fetch("api/history/meta?" + query({}));
       if (!resp.ok) { setStatus("ошибка: " + await resp.text(), true); return; }
       meta = await resp.json();
+      if (!meta.signals || !meta.signals.length) {
+        setStatus("В этой записи нет сигналов набора — выберите другой набор", true);
+        return;
+      }
 
       document.getElementById("title").textContent = "История: " + meta.title;
       full = { from: meta.from_ms / 1000, to: meta.to_ms / 1000 };
