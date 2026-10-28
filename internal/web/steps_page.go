@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -10,9 +11,10 @@ import (
 
 // ---------- Страница «Шаги»: журнал шаговой цепочки по файлу смены ----------
 //
-// GET /steps?plc=&file=&sig=&min=
+// GET /steps?plc=&file=&sig=&min=&mode=&mv=
 //   file — файл смены (как в «Истории»), sig — сигнал номера шага,
-//   min  — показывать в журнале проходы дольше min секунд; пусто — «необычно долгие».
+//   min  — показывать в журнале проходы дольше min секунд; пусто — «необычно долгие»,
+//   mode — сигнал режима работы, mv — его значение: считать только время в этом режиме.
 //
 // Считаем по ВСЕМ точкам файла, а не по прореженным для графика: короткий шаг
 // на 200 мс между точками обзора потерялся бы.
@@ -35,6 +37,12 @@ type stepsView struct {
 	Min     string      // фильтр журнала, как ввели
 	Err     string
 
+	// Режим работы: показать, сколько времени в каждом режиме, и считать шаги только в одном
+	ModeSigs []sigOption    // кандидаты в сигнал режима (те же целые сигналы)
+	ModeVals []valOption    // значения режима, встретившиеся в записи
+	Modes    []stepStatView // время по режимам за запись
+	ModeNote string         // «только в режиме «Автомат»: 6 ч 20 мин из 12 ч»
+
 	From, To, Dur string // запись
 	Passes        int    // всего проходов (строк журнала)
 	Summary       []stepStatView
@@ -46,6 +54,13 @@ type stepsView struct {
 // (урок 30a — чем меньше логики в шаблоне, тем меньше её может испортить форматтер).
 type sigOption struct {
 	Name     string
+	Selected bool
+}
+
+// valOption — значение режима в выборе: число, текст из справочника, выбрано ли
+type valOption struct {
+	Value    int64
+	Text     string
 	Selected bool
 }
 
@@ -73,6 +88,7 @@ type stepView struct {
 func (s *Server) stepsPage(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	v := stepsView{PLC: s.reqPLCID(r), File: q.Get("file"), Sig: q.Get("sig"), Min: strings.TrimSpace(q.Get("min"))}
+	mode, mv := q.Get("mode"), q.Get("mv")
 
 	f, err := s.openFile(r, v.File)
 	if err != nil {
@@ -87,6 +103,7 @@ func (s *Server) stepsPage(w http.ResponseWriter, r *http.Request) {
 		for _, sg := range g.Signals {
 			if t := strings.ToUpper(sg.Type); t != "BOOL" && t != "REAL" {
 				v.Signals = append(v.Signals, sigOption{Name: sg.Name, Selected: sg.Name == v.Sig})
+				v.ModeSigs = append(v.ModeSigs, sigOption{Name: sg.Name, Selected: sg.Name == mode})
 			}
 		}
 	}
@@ -118,38 +135,100 @@ func (s *Server) stepsPage(w http.ResponseWriter, r *http.Request) {
 	text := func(n int64) string { t, _ := l.text(v.Sig, n); return t }
 
 	// Разрыв — как на графике и в статистике: пауза больше трёх периодов опроса
-	fillSteps(&v, steps.Journal(gd.Times, gd.Values[ref.i], 3*ref.PeriodMs), minMs, text)
+	j := steps.Journal(gd.Times, gd.Values[ref.i], 3*ref.PeriodMs)
+
+	// Режим работы: время по режимам и, если выбрано значение, — только это время
+	var baseMs int64 // от чего считать «долю»; 0 — от всей записи
+	if mode != "" {
+		if mr := pickSignals(f, []string{mode}); len(mr) == 1 {
+			md := f.Groups[mr[0].g]
+			modeText := func(n int64) string { t, _ := l.text(mode, n); return t }
+			mj := steps.Journal(md.Times, md.Values[mr[0].i], 3*mr[0].PeriodMs)
+			j, baseMs = fillModes(&v, mj, mv, modeText, j)
+		} else {
+			v.Err = "в этой записи нет сигнала режима «" + mode + "»"
+		}
+	}
+	fillSteps(&v, j, minMs, text, baseMs)
 	render(w, "steps", v)
 }
 
-// fillSteps — журнал и сводка в вид для страницы. Отдельно от обработчика,
-// чтобы проверять тестом без файлов: на вход — готовый журнал.
-func fillSteps(v *stepsView, j []steps.Step, minMs int64, text func(int64) string) {
-	if len(j) == 0 {
-		v.Err = "в записи нет точек этого сигнала"
-		return
+// fillModes — таблица «время по режимам» и выбор значения режима. Если значение выбрано,
+// возвращает журнал шагов, обрезанный по времени в этом режиме, и длительность режима
+// (для «доли»); иначе — журнал как есть и 0.
+func fillModes(v *stepsView, mj []steps.Step, mv string, text func(int64) string, j []steps.Step) ([]steps.Step, int64) {
+	if len(mj) == 0 {
+		return j, 0
 	}
-	from, to := j[0].From, j[len(j)-1].To
-	v.From, v.To, v.Dur = fmtStatTime(from), fmtStatTime(to), fmtStatDur(to-from)
-	v.Passes = len(j)
+	sum := steps.Summary(mj)
+	v.Modes = statRows(sum, mj[len(mj)-1].To-mj[0].From, text)
 
-	sum := steps.Summary(j)
-	median := make(map[int64]int64, len(sum)) // для «необычно долгих»
+	want, err := strconv.ParseInt(mv, 10, 64)
+	selected := err == nil
 	for _, st := range sum {
-		median[st.Value] = st.MedianMs
+		v.ModeVals = append(v.ModeVals, valOption{Value: st.Value, Text: text(st.Value),
+			Selected: selected && st.Value == want})
+	}
+	sort.Slice(v.ModeVals, func(a, b int) bool { return v.ModeVals[a].Value < v.ModeVals[b].Value })
+	if !selected {
+		return j, 0
+	}
+
+	spans := steps.Spans(mj, want)
+	in := steps.Total(spans)
+	name := mv
+	if t := text(want); t != "" {
+		name = mv + " · " + t
+	}
+	v.ModeNote = "только в режиме «" + name + "»: " + fmtStatDur(in) + " из " + fmtStatDur(mj[len(mj)-1].To-mj[0].From)
+	return steps.Clip(j, spans), in
+}
+
+// statRows — сводка в строки таблицы; base — от чего считать долю, мс
+func statRows(sum []steps.Stat, base int64, text func(int64) string) []stepStatView {
+	rows := make([]stepStatView, 0, len(sum))
+	for _, st := range sum {
 		row := stepStatView{
 			Value: st.Value, Text: text(st.Value), Count: st.Count, Full: st.Full, Partial: st.Full < st.Count,
 			Total: fmtStatDur(st.TotalMs),
 			Max:   fmtStatDur(st.MaxMs), MaxAt: fmtStatTime(st.MaxAt), MaxCut: st.MaxCut,
 		}
-		if to > from {
-			row.Pct = strings.Replace(fmtNum(100*float64(st.TotalMs)/float64(to-from), 1), ".", ",", 1) + " %"
+		if base > 0 {
+			row.Pct = strings.Replace(fmtNum(100*float64(st.TotalMs)/float64(base), 1), ".", ",", 1) + " %"
 		}
 		if st.Full > 0 {
 			row.Median, row.Mean = fmtStatDur(st.MedianMs), fmtStatDur(st.MeanMs)
 		}
-		v.Summary = append(v.Summary, row)
+		rows = append(rows, row)
 	}
+	return rows
+}
+
+// fillSteps — журнал и сводка в вид для страницы. Отдельно от обработчика,
+// чтобы проверять тестом без файлов: на вход — готовый журнал.
+// baseMs — от чего считать «долю»: время в выбранном режиме; 0 — вся запись.
+func fillSteps(v *stepsView, j []steps.Step, minMs int64, text func(int64) string, baseMs int64) {
+	if len(j) == 0 {
+		if v.ModeNote != "" {
+			v.Err = "в выбранном режиме цепочка не работала"
+		} else {
+			v.Err = "в записи нет точек этого сигнала"
+		}
+		return
+	}
+	from, to := j[0].From, j[len(j)-1].To
+	v.From, v.To, v.Dur = fmtStatTime(from), fmtStatTime(to), fmtStatDur(to-from)
+	v.Passes = len(j)
+	if baseMs == 0 {
+		baseMs = to - from
+	}
+
+	sum := steps.Summary(j)
+	median := make(map[int64]int64, len(sum)) // для «необычно долгих»
+	for _, st := range sum {
+		median[st.Value] = st.MedianMs
+	}
+	v.Summary = statRows(sum, baseMs, text)
 
 	// long — необычно долгий: в unusual раз дольше медианы своего шага и не короче unusualMinMs.
 	// Обрезанные проходы сравнивать не с чем — их длительность неполная.

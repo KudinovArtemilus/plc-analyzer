@@ -26,14 +26,54 @@
         журнал: дольше <input name="min" value="{{.Min}}" size="5" placeholder="авто"> с
         <button>Показать</button>
         {{if .Err}}<span class="err">{{.Err}}</span>{{end}}
-        <br><small class="muted">Пусто — только необычно долгие проходы; 0 — все. Подписи шагов — из
-            справочника, назначенного сигналу на странице «Сигналы».</small>
+        <br><b>Режим работы:</b>
+        <select name="mode" onchange="this.form.mv.value = ''; this.form.submit()">
+            <option value="">— не учитывать —</option>
+            {{range .ModeSigs}}<option value="{{.Name}}" {{if .Selected}}selected{{end}}>{{.Name}}</option>{{end}}
+        </select>
+        {{if .ModeVals}}считать только
+        <select name="mv" onchange="this.form.submit()">
+            <option value="">— все режимы —</option>
+            {{range .ModeVals}}<option value="{{.Value}}" {{if .Selected}}selected{{end}}>{{.Value}}{{if .Text}} · {{.Text}}{{end}}</option>{{end}}
+        </select>{{else}}<input type="hidden" name="mv" value="">{{end}}
+        <br><small class="muted">Пусто — только необычно долгие проходы; 0 — все. Подписи шагов и режимов — из
+            справочников, назначенных сигналам на странице «Сигналы».</small>
     </form>
 
     {{if not .Signals}}<p>В этой записи нет целых сигналов (INT, WORD, DINT) — номеру шага взяться неоткуда.</p>{{end}}
 
+    {{if .Modes}}
+    <h4>Режимы работы за запись</h4>
+    <table class="stats">
+        <thead>
+            <tr>
+                <th>Режим</th>
+                <th>Раз</th>
+                <th>Всего</th>
+                <th>Доля</th>
+                <th>Самый долгий</th>
+                <th>когда</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Modes}}
+            <tr>
+                <td><b class="mono">{{.Value}}</b>{{if .Text}} · {{.Text}}{{end}}</td>
+                <td class="num">{{.Count}}</td>
+                <td class="num">{{.Total}}</td>
+                <td class="num">{{.Pct}}</td>
+                <td class="num">{{if .MaxCut}}≥ {{end}}{{.Max}}</td>
+                <td class="mono muted">{{.MaxAt}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{end}}
+
     {{if .Summary}}
     <p>Запись: {{.From}} — {{.To}} ({{.Dur}}) · проходов по шагам: {{.Passes}}</p>
+    {{if .ModeNote}}<div class="bar">{{.ModeNote}}. Проходы, прерванные сменой режима, обрезаны его
+        границей и в «обычно» не входят.</div>{{end}}
 
     <h4>По шагам — где цепочка проводит время</h4>
     <table class="stats">
@@ -53,9 +93,7 @@
             {{range .Summary}}
             <tr>
                 <td><b class="mono">{{.Value}}</b>{{if .Text}} · {{.Text}}{{end}}</td>
-                <td class="num">{{.Count}}{{if .Partial}} <small class="muted"
-                        title="полных проходов; остальные обрезаны краем записи или обрывом связи">({{.Full}})</small>{{end}}
-                </td>
+                <td class="num">{{.Count}}{{if .Partial}} <small class="muted" title="полных проходов; остальные обрезаны краем записи или обрывом связи">({{.Full}})</small>{{end}}</td>
                 <td class="num">{{.Total}}</td>
                 <td class="num">{{.Pct}}</td>
                 <td class="num">{{if .Median}}{{.Median}}{{else}}<span class="muted">—</span>{{end}}</td>
@@ -85,15 +123,37 @@
             <tr{{if .Long}} class="warn-row" {{end}}>
                 <td class="mono">{{.From}}</td>
                 <td><b class="mono">{{.Value}}</b>{{if .Text}} · {{.Text}}{{end}}</td>
-                <td class="num">{{if .CutStart}}<span
-                        title="начало не видно: шаг уже шёл">…</span>{{end}}{{.Dur}}{{if .CutEnd}}<span
-                        title="конец не виден: запись кончилась или оборвалась связь">…</span>{{end}}</td>
-                </tr>
-                {{end}}
+                <td class="num">{{if .CutStart}}<span title="начало не видно: шаг уже шёл">…</span>{{end}}{{.Dur}}{{if .CutEnd}}<span title="конец не виден: запись кончилась или оборвалась связь">…</span>{{end}}</td>
+            </tr>
+            {{end}}
         </tbody>
     </table>
     {{end}}
     {{end}}
+
+    <script>
+        // Запомнить выбор (сигнал шага, сигнал режима, значение режима) для этого ПЛК: в следующий
+        // раз по ссылке «шаги» из «Истории» страница откроется сразу с ним. Только если в адресе
+        // выбора нет совсем — выбор «— не учитывать —» тоже выбор, и его не перебиваем.
+        (function () {
+            const q = new URLSearchParams(location.search);
+            const key = "plca:steps:" + (q.get("plc") || "");
+            const keys = ["sig", "mode", "mv"];
+            try {
+                if (keys.some(k => q.has(k))) {
+                    const save = {};
+                    keys.forEach(k => { save[k] = q.get(k) || ""; });
+                    localStorage.setItem(key, JSON.stringify(save));
+                } else {
+                    const saved = JSON.parse(localStorage.getItem(key) || "null");
+                    if (saved && saved.sig) {
+                        keys.forEach(k => q.set(k, saved[k] || ""));
+                        location.replace("/steps?" + q); // replace — кнопка «назад» не зациклится
+                    }
+                }
+            } catch (e) { } // хранилище недоступно — просто без запоминания
+        })();
+    </script>
 </body>
 
 </html>

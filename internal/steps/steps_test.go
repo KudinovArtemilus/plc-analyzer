@@ -142,3 +142,43 @@ func TestMedianEven(t *testing.T) {
 		t.Errorf("медиана 100,200,300,400 = %d, ждали 250", m)
 	}
 }
+
+func TestSpansClip(t *testing.T) {
+	// Режим: 1 (автомат) 0–1000, 2 (ручной) 1000–1500, 1 снова 1500–3000
+	mode := []Step{
+		{Value: 1, From: 0, To: 1000, CutStart: true},
+		{Value: 2, From: 1000, To: 1500},
+		{Value: 1, From: 1500, To: 3000, CutEnd: true},
+	}
+	auto := Spans(mode, 1)
+	if !reflect.DeepEqual(auto, []Span{{0, 1000}, {1500, 3000}}) || Total(auto) != 2500 {
+		t.Fatalf("отрезки автомата: %+v, всего %d", auto, Total(auto))
+	}
+
+	j := []Step{
+		{Value: 10, From: 0, To: 400, CutStart: true}, // целиком в автомате (но начало — край записи)
+		{Value: 12, From: 400, To: 800},               // целиком в автомате — полный
+		{Value: 14, From: 800, To: 1800},              // через ручной режим — две обрезанные части
+		{Value: 3, From: 1800, To: 3000, CutEnd: true},
+	}
+	got := Clip(j, auto)
+	want := []Step{
+		{Value: 10, From: 0, To: 400, CutStart: true},
+		{Value: 12, From: 400, To: 800},
+		{Value: 14, From: 800, To: 1000, CutEnd: true},
+		{Value: 14, From: 1500, To: 1800, CutStart: true},
+		{Value: 3, From: 1800, To: 3000, CutEnd: true},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("обрезка:\n got  %+v\n want %+v", got, want)
+	}
+
+	// Шаг целиком в ручном режиме — пропадает
+	if c := Clip([]Step{{Value: 5, From: 1100, To: 1400}}, auto); len(c) != 0 {
+		t.Errorf("шаг в ручном режиме попал в автомат: %+v", c)
+	}
+	// Нет отрезков (режим ни разу не был выбранным) — пусто
+	if c := Clip(j, nil); len(c) != 0 {
+		t.Errorf("без отрезков: %+v", c)
+	}
+}

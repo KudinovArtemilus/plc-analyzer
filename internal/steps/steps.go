@@ -138,3 +138,59 @@ func median(ds []int64) int64 {
 	}
 	return (ds[m-1] + ds[m]) / 2
 }
+
+// ---------- Только в режиме: отрезки времени и обрезка журнала по ним ----------
+
+// Span — отрезок времени [From, To], мс
+type Span struct{ From, To int64 }
+
+// Spans — отрезки, когда сигнал был равен v. Журнал сигнала режима строится тем же Journal:
+// режим — такой же номер, как шаг («1 · Автомат», «2 · Ручной»).
+func Spans(j []Step, v int64) []Span {
+	var out []Span
+	for _, s := range j {
+		if s.Value == v && s.To > s.From {
+			out = append(out, Span{s.From, s.To})
+		}
+	}
+	return out
+}
+
+// Clip — оставить от журнала только то, что попадает в отрезки.
+//
+// Проход, который начался или кончился вне отрезка, обрезается по его границе и помечается
+// CutStart / CutEnd с этой стороны: в выбранном режиме он виден не целиком, и в медиану
+// не пойдёт. Шаг, который шёл через смену режима, даст две части — обе обрезанные.
+//
+// И журнал, и отрезки идут по времени, поэтому обходим их вместе двумя указателями:
+// без вложенного перебора «каждый с каждым» — за смену тут десятки тысяч проходов.
+func Clip(j []Step, spans []Span) []Step {
+	var out []Step
+	k := 0 // первый отрезок, который ещё может пересечься с текущим проходом
+	for _, s := range j {
+		for k < len(spans) && spans[k].To <= s.From {
+			k++ // отрезок кончился до начала прохода — дальше он никому не нужен
+		}
+		for i := k; i < len(spans) && spans[i].From < s.To; i++ {
+			from, to := max(s.From, spans[i].From), min(s.To, spans[i].To)
+			if to <= from {
+				continue
+			}
+			out = append(out, Step{
+				Value: s.Value, From: from, To: to,
+				CutStart: s.CutStart || from > s.From, // начало срезано границей режима
+				CutEnd:   s.CutEnd || to < s.To,
+			})
+		}
+	}
+	return out
+}
+
+// Total — суммарная длина отрезков, мс
+func Total(spans []Span) int64 {
+	var t int64
+	for _, sp := range spans {
+		t += sp.To - sp.From
+	}
+	return t
+}
