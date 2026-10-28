@@ -1,6 +1,6 @@
 {{define "plcname"}}
 <span id="plcname">ПЛК <b>{{.Name}}</b> ({{.IP}})
-  <button hx-get="/ui/plc/edit" hx-target="#plcname" hx-swap="outerHTML">переименовать</button>
+  <button class="edit" hx-get="/ui/plc/edit" hx-target="#plcname" hx-swap="outerHTML">переименовать</button>
 </span>
 {{end}}
 

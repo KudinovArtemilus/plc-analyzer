@@ -6,6 +6,7 @@
   <meta charset="utf-8">
   <title>Сигналы — PLC Analyzer</title>
   <link rel="stylesheet" href="/isa101.css">
+  <link rel="stylesheet" href="/access.css">
 </head>
 
 <body>
@@ -30,7 +31,7 @@
   </div>
 
   {{template "addform" .Form}}
-  <button hx-get="/ui/signals/bulk?plc={{.PLC.ID}}" hx-target="#bulk">＋ Добавить списком (диапазон битов, из
+  <button class="edit" hx-get="/ui/signals/bulk?plc={{.PLC.ID}}" hx-target="#bulk"> Добавить списком (диапазон битов, из
     Excel)</button>
   <div id="bulk"></div>
 
@@ -75,7 +76,7 @@
   <td>{{.Message}}{{if .DictID}} <small class="muted" title="значения подписываются по справочнику">·
       справочник</small>{{end}}</td>
   <td>
-    <button hx-get="/ui/signals/{{.ID}}/edit" hx-target="closest tr" hx-swap="outerHTML">изменить</button>
+    <button class="edit" hx-get="/ui/signals/{{.ID}}/edit" hx-target="closest tr" hx-swap="outerHTML">изменить</button>
     <button hx-post="/ui/signals/{{.ID}}/toggle" hx-target="closest tr" hx-swap="outerHTML">
       {{if .Enabled}}выключить{{else}}включить{{end}}
     </button>

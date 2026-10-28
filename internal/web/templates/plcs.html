@@ -6,6 +6,7 @@
   <meta charset="utf-8">
   <title>ПЛК — PLC Analyzer</title>
   <link rel="stylesheet" href="/isa101.css">
+  <link rel="stylesheet" href="/access.css">
 </head>
 
 <body>
@@ -64,7 +65,7 @@
   <td>
     <a href="/?plc={{.ID}}">графики</a>
     <a href="/signals?plc={{.ID}}">сигналы</a>
-    <button hx-get="/ui/plcs/{{.ID}}/edit" hx-target="closest tr" hx-swap="outerHTML">изменить</button>
+    <button class="edit" hx-get="/ui/plcs/{{.ID}}/edit" hx-target="closest tr" hx-swap="outerHTML">изменить</button>
     <button hx-delete="/ui/plcs/{{.ID}}" hx-target="closest tr" hx-swap="outerHTML" hx-confirm="Удалить ПЛК «{{.Name}}» ({{.IP}})?
 
 Из базы удалятся его сигналы, журнал аварий, шунты и слепки, опрос остановится.

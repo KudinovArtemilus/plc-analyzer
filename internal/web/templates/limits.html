@@ -6,6 +6,7 @@
     <meta charset="utf-8">
     <title>Нормы — PLC Analyzer</title>
     <link rel="stylesheet" href="/isa101.css">
+    <link rel="stylesheet" href="/access.css">
 </head>
 
 <body>
@@ -67,7 +68,8 @@
     <td class="num">{{if .Jump}}{{.JumpMs}}{{end}}</td>
     <td>{{if .Has}}{{kindTitle .Kind}}{{end}}</td>
     <td class="{{if not .Has}}muted{{end}}">{{.Descr}}</td>
-    <td><button hx-get="/ui/limits/{{.Sig.ID}}/edit" hx-target="closest tr" hx-swap="outerHTML">изменить</button>
+    <td><button class="edit" hx-get="/ui/limits/{{.Sig.ID}}/edit" hx-target="closest tr"
+            hx-swap="outerHTML">изменить</button>
     </td>
 </tr>
 {{end}}

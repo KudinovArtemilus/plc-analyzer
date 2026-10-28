@@ -8,7 +8,6 @@ package events
 import (
 	"strconv"
 	"strings"
-	"testing"
 	"time"
 )
 
@@ -128,16 +127,3 @@ func CodeOf(message string) (int64, bool) {
 
 // Len — сколько битов под наблюдением
 func (d *Detector) Len() int { return len(d.bits) }
-
-func TestCodeOf(t *testing.T) {
-	// То, что пишет withCode, читается обратно
-	b := withCode(Bit{Message: "Привод стола", Code: true}, 7501)
-	if n, ok := CodeOf(b.Message); !ok || n != 7501 {
-		t.Fatalf("CodeOf(%q) = %d, %v", b.Message, n, ok)
-	}
-	for _, m := range []string{"Перегрев масла", "Давление: выше 180 бар", "Привод: код ", "Привод: код 75x"} {
-		if _, ok := CodeOf(m); ok {
-			t.Errorf("CodeOf(%q): кода нет, а найден", m)
-		}
-	}
-}

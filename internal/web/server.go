@@ -89,6 +89,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /", noCache(http.FileServerFS(files)))
+	mux.HandleFunc("GET /access.css", s.accessCSS) // пустой для своих, прячет кнопки правки для остальных
 
 	// Live
 	mux.HandleFunc("GET /api/plcs", s.plcsJSON)

@@ -135,3 +135,16 @@ func TestDetectorCode(t *testing.T) {
 		t.Fatalf("бит: сообщение %q", b[0].Bit.Message)
 	}
 }
+
+func TestCodeOf(t *testing.T) {
+	// То, что пишет withCode, читается обратно
+	b := withCode(Bit{Message: "Привод стола", Code: true}, 7501)
+	if n, ok := CodeOf(b.Message); !ok || n != 7501 {
+		t.Fatalf("CodeOf(%q) = %d, %v", b.Message, n, ok)
+	}
+	for _, m := range []string{"Перегрев масла", "Давление: выше 180 бар", "Привод: код ", "Привод: код 75x"} {
+		if _, ok := CodeOf(m); ok {
+			t.Errorf("CodeOf(%q): кода нет, а найден", m)
+		}
+	}
+}

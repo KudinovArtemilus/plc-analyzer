@@ -55,3 +55,25 @@ func TestGuard(t *testing.T) {
 		t.Errorf("HTMX с чужого ПК: вызван %v, заголовки %v, тело %q", called, w.Header(), w.Body.String())
 	}
 }
+
+func TestAccessCSS(t *testing.T) {
+	s := &Server{Admins: map[string]bool{"10.0.0.5": true}}
+	get := func(from string) string {
+		r := httptest.NewRequest("GET", "/access.css", nil)
+		r.RemoteAddr = from + ":51000"
+		w := httptest.NewRecorder()
+		s.accessCSS(w, r)
+		if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/css") {
+			t.Errorf("%s: Content-Type %q — браузер не применит стиль", from, ct)
+		}
+		return w.Body.String()
+	}
+	for _, own := range []string{"127.0.0.1", "10.0.0.5"} {
+		if css := get(own); css != "" {
+			t.Errorf("%s может менять — кнопки прятать нельзя, а пришло %q", own, css)
+		}
+	}
+	if css := get("10.0.0.99"); !strings.Contains(css, "display: none") || !strings.Contains(css, ".edit") {
+		t.Errorf("чужой ПК — кнопки должны прятаться, а пришло %q", css)
+	}
+}

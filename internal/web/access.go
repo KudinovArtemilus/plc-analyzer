@@ -70,3 +70,30 @@ func (s *Server) guard(next http.Handler) http.Handler {
 		http.Error(w, readOnlyMsg, http.StatusForbidden)
 	})
 }
+
+// ---------- Прятать кнопки правки у тех, кому нельзя ----------
+//
+// Каждая страница подключает /access.css. Для своих (canEdit) файл пустой,
+// для остальных — одно правило, которое прячет всё, что меняет настройки.
+// Так решает СЕРВЕР по тому же canEdit, что и guard: правило одно, расхождений нет.
+// И это CSS, а не шаблоны: правило действует и на строки, которые HTMX
+// подставит позже (например, после «показать ещё»).
+
+// readOnlyCSS — что прятать:
+//   - [hx-post] [hx-put] [hx-delete] и form[method=post] — всё, что отправляет изменение
+//     (те же методы, которые не пропускает guard);
+//   - .edit — кнопки, которые только ОТКРЫВАЮТ форму правки («изменить», «шунт», «Слепок»):
+//     сами они делают GET, по атрибутам их не отличить, поэтому помечены классом.
+const readOnlyCSS = `[hx-post], [hx-put], [hx-delete], form[method="post"], .edit {
+	display: none !important;
+}
+`
+
+// accessCSS — GET /access.css
+func (s *Server) accessCSS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache") // права могут поменяться при перезапуске с другим -admin
+	if !s.canEdit(r) {
+		w.Write([]byte(readOnlyCSS))
+	}
+}

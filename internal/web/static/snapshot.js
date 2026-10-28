@@ -5,6 +5,7 @@
 
   const btn = document.createElement("button");
   btn.textContent = "📌 Слепок";
+  btn.className = "edit"; // сохранить слепок может только тот, кому можно менять
   $("export").appendChild(btn);
 
   const panel = document.createElement("div");
@@ -52,10 +53,10 @@
     const body = {
       file, signals: names,
       from_ms: Math.floor(r.from * 1000),
-      to_ms:   Math.ceil(r.to * 1000),
-      name:     $("snapName").value,
+      to_ms: Math.ceil(r.to * 1000),
+      name: $("snapName").value,
       category: $("snapCat").value,
-      comment:  $("snapComment").value,
+      comment: $("snapComment").value,
     };
     msg("сохраняю…", true);
     const resp = await fetch("api/snapshots" + plcQ, {

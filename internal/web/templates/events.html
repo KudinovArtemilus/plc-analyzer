@@ -6,6 +6,7 @@
     <meta charset="utf-8">
     <title>События — PLC Analyzer</title>
     <link rel="stylesheet" href="/isa101.css">
+    <link rel="stylesheet" href="/access.css">
 </head>
 
 <body>
@@ -97,7 +98,7 @@
         {{if .PlotSig}}<button class="ev-plot" data-sig="{{.PlotSig}}" title="показать этот бит дорожкой на графике">на
             график</button>{{end}}
         <!-- Форма шунта — в #shelveForm ВНЕ панели: панель обновляется каждую секунду -->
-        <button class="ev-plot" hx-get="/ui/shelve?plc={{$.PLCID}}&sig={{.Signal}}" hx-target="#shelveForm"
+        <button class="ev-plot edit" hx-get="/ui/shelve?plc={{$.PLCID}}&sig={{.Signal}}" hx-target="#shelveForm"
             title="временно убрать с панели долго висящую аварию">шунт</button>
     </div>
     {{end}}

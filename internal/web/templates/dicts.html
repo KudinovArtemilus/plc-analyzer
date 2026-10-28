@@ -15,6 +15,7 @@
     <meta charset="utf-8">
     <title>Справочники — PLC Analyzer</title>
     <link rel="stylesheet" href="/isa101.css">
+    <link rel="stylesheet" href="/access.css">
 </head>
 
 <body>
@@ -65,6 +66,7 @@
     <meta charset="utf-8">
     <title>{{.Dict.Name}} — справочник</title>
     <link rel="stylesheet" href="/isa101.css">
+    <link rel="stylesheet" href="/access.css">
 </head>
 
 <body>
@@ -100,7 +102,7 @@
                 <td class="mono">{{.Value}}</td>
                 <td>{{.Text}}</td>
                 <td>
-                    <a href="/dicts/{{$.Dict.ID}}?plc={{$.PLC}}&v={{.Value}}">изменить</a>
+                    <a class="edit" href="/dicts/{{$.Dict.ID}}?plc={{$.PLC}}&v={{.Value}}">изменить</a>
                     <form method="post" action="/dicts/{{$.Dict.ID}}/items/{{.Value}}/delete?plc={{$.PLC}}"
                         style="display:inline" onsubmit="return confirm('Удалить строку {{.Value}}?')">
                         <button>удалить</button>
