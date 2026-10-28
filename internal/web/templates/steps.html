@@ -116,6 +116,7 @@
                 <th>Вошли</th>
                 <th>Шаг</th>
                 <th>Стоял</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -124,6 +125,7 @@
                 <td class="mono">{{.From}}</td>
                 <td><b class="mono">{{.Value}}</b>{{if .Text}} · {{.Text}}{{end}}</td>
                 <td class="num">{{if .CutStart}}<span title="начало не видно: шаг уже шёл">…</span>{{end}}{{.Dur}}{{if .CutEnd}}<span title="конец не виден: запись кончилась или оборвалась связь">…</span>{{end}}</td>
+                <td><a href="{{.Link}}" target="_blank" title="участок на графике: курсор A — вход в шаг, B — выход">график ↗</a></td>
             </tr>
             {{end}}
         </tbody>

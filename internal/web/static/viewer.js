@@ -304,6 +304,8 @@ function createViewer(cfg) {
     getAxis: () => axisU,
     resetOrder: () => { if (order) order.reset(); },
     getCursors: () => ({ a: curA, b: curB }),
+    // setCursors — поставить курсоры по времени (секунды); null — убрать курсор
+    setCursors: (a, b) => { curA = a; curB = b; updateCursors(); },
     getRange: () => range,
     // setTexts — подписи из справочников; вызывать ДО build: от них зависит ширина колонки значений
     setTexts: t => {

@@ -51,6 +51,10 @@
     const file = params.get("file");
     const names = params.getAll("s");
     const setId = params.get("set") || ""; // открыто по набору — у набора свой порядок дорожек
+    // Открыто со страницы «Шаги»: сразу участок from–to и курсоры A–B на входе и выходе из шага.
+    // Время в адресе — мс; в графиках — секунды. Нет параметра — null.
+    const msParam = k => params.has(k) && isFinite(+params.get(k)) ? +params.get(k) / 1000 : null;
+    const zoom = { from: msParam("from"), to: msParam("to"), a: msParam("ca"), b: msParam("cb") };
     const statusEl = document.getElementById("status");
 
     // Ссылки меню ведут к тому же ПЛК
@@ -289,7 +293,13 @@
       // Подписи шагов и кодов из справочников (сигналы ищутся по имени у ПЛК сейчас)
       try { viewer.setTexts(await (await fetch("api/dicts" + plcQ)).json()); } catch (e) { }
       viewer.build(meta.signals.map(s => ({ name: s.name, unit: s.unit, periodMs: s.period_ms })));
-      await load();
+      if (zoom.from != null && zoom.to != null && zoom.to > zoom.from) {
+        // Участок не шире записи: файл мог кончиться раньше, чем запас после шага
+        await load(Math.max(zoom.from, full.from), Math.min(zoom.to, full.to));
+        if (zoom.a != null || zoom.b != null) viewer.setCursors(zoom.a, zoom.b);
+      } else {
+        await load();
+      }
       if (meta.damaged) setStatus("Файл оборван (например, отключали питание) — показана целая часть", true);
     }
 

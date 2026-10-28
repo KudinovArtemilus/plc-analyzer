@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -42,6 +43,7 @@ type stepsView struct {
 	ModeVals []valOption    // значения режима, встретившиеся в записи
 	Modes    []stepStatView // время по режимам за запись
 	ModeNote string         // «только в режиме «Автомат»: 6 ч 20 мин из 12 ч»
+	Mode     string         // выбранный сигнал режима — его тоже показать на графике
 
 	From, To, Dur string // запись
 	Passes        int    // всего проходов (строк журнала)
@@ -82,6 +84,30 @@ type stepView struct {
 	Long      bool // необычно долгий — выделить
 	CutStart  bool
 	CutEnd    bool
+	Link      string // этот проход на графике
+}
+
+// stepPad — запас по краям участка на графике: доля длительности прохода, но не меньше 5 с,
+// чтобы было видно, что было ДО входа в шаг и ПОСЛЕ выхода
+const stepPadMin = 5000
+
+// stepLink — просмотр записи на участке прохода: курсор A — вход в шаг, B — выход,
+// Δt между ними — длительность. На графике — сигнал шага и (если выбран) сигнал режима;
+// набор сигналов можно переключить уже там, участок сохранится.
+func stepLink(v *stepsView, st steps.Step) string {
+	pad := max(stepPadMin, st.Dur()/10)
+	q := url.Values{}
+	q.Set("plc", strconv.FormatInt(v.PLC, 10))
+	q.Set("file", v.File)
+	q.Add("s", v.Sig)
+	if v.Mode != "" && v.Mode != v.Sig {
+		q.Add("s", v.Mode)
+	}
+	q.Set("from", strconv.FormatInt(st.From-pad, 10))
+	q.Set("to", strconv.FormatInt(st.To+pad, 10))
+	q.Set("ca", strconv.FormatInt(st.From, 10))
+	q.Set("cb", strconv.FormatInt(st.To, 10))
+	return "/view.html?" + q.Encode()
 }
 
 // stepsPage — GET /steps
@@ -89,6 +115,7 @@ func (s *Server) stepsPage(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	v := stepsView{PLC: s.reqPLCID(r), File: q.Get("file"), Sig: q.Get("sig"), Min: strings.TrimSpace(q.Get("min"))}
 	mode, mv := q.Get("mode"), q.Get("mv")
+	v.Mode = mode
 
 	f, err := s.openFile(r, v.File)
 	if err != nil {
@@ -258,6 +285,7 @@ func fillSteps(v *stepsView, j []steps.Step, minMs int64, text func(int64) strin
 				Value: st.Value, Text: text(st.Value),
 				From: fmtStatTime(st.From), Dur: fmtStatDur(st.Dur()),
 				Long: long(st), CutStart: st.CutStart, CutEnd: st.CutEnd,
+				Link: stepLink(v, st),
 			})
 		}
 	}

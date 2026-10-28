@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -137,4 +138,45 @@ func TestFillModes(t *testing.T) {
 	if v.Err != "в выбранном режиме цепочка не работала" {
 		t.Errorf("пустой режим: %q", v.Err)
 	}
+}
+
+// Ссылка из журнала: участок с запасом, курсоры на входе и выходе, сигналы шага и режима
+func TestStepLink(t *testing.T) {
+	v := &stepsView{PLC: 2, File: "2026/10/28/A_1.pla", Sig: "Шаги работы", Mode: "Режим работы"}
+
+	// Короткий шаг (6 с): запас — минимальные 5 с
+	u, err := url.Parse(stepLink(v, steps.Step{Value: 12, From: 100_000, To: 106_000}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := u.Query()
+	if u.Path != "/view.html" || q.Get("plc") != "2" || q.Get("file") != "2026/10/28/A_1.pla" {
+		t.Errorf("адрес: %s", u)
+	}
+	if q.Get("from") != "95000" || q.Get("to") != "111000" || q.Get("ca") != "100000" || q.Get("cb") != "106000" {
+		t.Errorf("участок и курсоры: %v", q)
+	}
+	if s := q["s"]; len(s) != 2 || s[0] != "Шаги работы" || s[1] != "Режим работы" {
+		t.Errorf("сигналы: %v", s)
+	}
+
+	// Долгий шаг (5 мин): запас — 10 % длительности, 30 с
+	q = mustQuery(t, stepLink(v, steps.Step{From: 0, To: 300_000}))
+	if q.Get("from") != "-30000" || q.Get("to") != "330000" {
+		t.Errorf("запас у долгого шага: %v", q)
+	}
+
+	// Без режима — только сигнал шага
+	v.Mode = ""
+	if s := mustQuery(t, stepLink(v, steps.Step{From: 0, To: 1000}))["s"]; len(s) != 1 {
+		t.Errorf("без режима: %v", s)
+	}
+}
+
+func mustQuery(t *testing.T, link string) url.Values {
+	u, err := url.Parse(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u.Query()
 }
