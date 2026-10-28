@@ -635,3 +635,11 @@ a.describe {
   font-size: 12px;
   margin-left: 6px;
 }
+
+
+/* ---------- Шаги (31b) ---------- */
+/* Необычно долгий проход шага — предупреждение: жёлтый по смыслу ISA-101 */
+table.stats tr.warn-row td {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}

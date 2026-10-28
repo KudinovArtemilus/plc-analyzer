@@ -32,6 +32,7 @@
       <td>{{.Size}}{{if .Live}} <span class="live">● записывается</span>{{end}}</td>
       <td><button hx-get="/ui/history/pick?plc={{$.PLC.ID}}&file={{.Rel}}" hx-target="#pick-{{.ID}}">выбрать
           сигналы</button></td>
+      <a href="/steps?plc={{$.PLC.ID}}&file={{.Rel}}" title="журнал шаговой цепочки за эту смену">шаги</a></td>
     </tr>
     <tr>
       <td colspan="5" id="pick-{{.ID}}"></td>

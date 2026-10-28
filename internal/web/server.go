@@ -146,6 +146,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/history/data", s.historyData)
 	mux.HandleFunc("GET /api/history/csv", s.historyCSV)
 	mux.HandleFunc("GET /ui/history/stats", s.historyStats)
+	mux.HandleFunc("GET /steps", s.stepsPage) // журнал шаговой цепочки по файлу смены
 
 	// Слепки
 	mux.HandleFunc("POST /api/snapshots", s.createSnapshot)

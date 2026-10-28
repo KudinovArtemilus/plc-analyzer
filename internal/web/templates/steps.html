@@ -1,0 +1,99 @@
+{{define "steps"}}
+<!doctype html>
+<html lang="ru">
+
+<head>
+    <meta charset="utf-8">
+    <title>Шаги — PLC Analyzer</title>
+    <link rel="stylesheet" href="/isa101.css">
+    <link rel="stylesheet" href="/access.css">
+</head>
+
+<body>
+    <nav><a href="/?plc={{.PLC}}">← Графики</a> <a href="/history?plc={{.PLC}}">← История</a>
+        <a href="/signals?plc={{.PLC}}">Сигналы</a> <a href="/dicts?plc={{.PLC}}">Справочники</a>
+    </nav>
+    <h3>Шаги: {{.Title}}</h3>
+
+    <form method="get" action="/steps" class="panel-form">
+        <input type="hidden" name="plc" value="{{.PLC}}">
+        <input type="hidden" name="file" value="{{.File}}">
+        <b>Номер шага:</b>
+        <select name="sig" onchange="this.form.submit()">
+            <option value="">— выберите сигнал —</option>
+            {{range .Signals}}<option value="{{.Name}}" {{if .Selected}}selected{{end}}>{{.Name}}</option>{{end}}
+        </select>
+        журнал: дольше <input name="min" value="{{.Min}}" size="5" placeholder="авто"> с
+        <button>Показать</button>
+        {{if .Err}}<span class="err">{{.Err}}</span>{{end}}
+        <br><small class="muted">Пусто — только необычно долгие проходы; 0 — все. Подписи шагов — из
+            справочника, назначенного сигналу на странице «Сигналы».</small>
+    </form>
+
+    {{if not .Signals}}<p>В этой записи нет целых сигналов (INT, WORD, DINT) — номеру шага взяться неоткуда.</p>{{end}}
+
+    {{if .Summary}}
+    <p>Запись: {{.From}} — {{.To}} ({{.Dur}}) · проходов по шагам: {{.Passes}}</p>
+
+    <h4>По шагам — где цепочка проводит время</h4>
+    <table class="stats">
+        <thead>
+            <tr>
+                <th>Шаг</th>
+                <th>Раз</th>
+                <th>Всего</th>
+                <th>Доля</th>
+                <th>Обычно (медиана)</th>
+                <th>Среднее</th>
+                <th>Самый долгий</th>
+                <th>когда</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Summary}}
+            <tr>
+                <td><b class="mono">{{.Value}}</b>{{if .Text}} · {{.Text}}{{end}}</td>
+                <td class="num">{{.Count}}{{if .Partial}} <small class="muted"
+                        title="полных проходов; остальные обрезаны краем записи или обрывом связи">({{.Full}})</small>{{end}}
+                </td>
+                <td class="num">{{.Total}}</td>
+                <td class="num">{{.Pct}}</td>
+                <td class="num">{{if .Median}}{{.Median}}{{else}}<span class="muted">—</span>{{end}}</td>
+                <td class="num">{{if .Mean}}{{.Mean}}{{else}}<span class="muted">—</span>{{end}}</td>
+                <td class="num">{{if .MaxCut}}≥ {{end}}{{.Max}}</td>
+                <td class="mono muted">{{.MaxAt}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    <p><small class="muted">«Обычно» и «среднее» — по полным проходам. «≥» — проход обрезан краем записи или
+            обрывом связи: на самом деле мог быть дольше.</small></p>
+
+    <h4>Журнал</h4>
+    <p><small>{{.JournalNote}}</small></p>
+    {{if .Journal}}
+    <table class="stats">
+        <thead>
+            <tr>
+                <th>Вошли</th>
+                <th>Шаг</th>
+                <th>Стоял</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Journal}}
+            <tr{{if .Long}} class="warn-row" {{end}}>
+                <td class="mono">{{.From}}</td>
+                <td><b class="mono">{{.Value}}</b>{{if .Text}} · {{.Text}}{{end}}</td>
+                <td class="num">{{if .CutStart}}<span title="начало не видно: шаг уже шёл">…</span>{{end}}{{.Dur}}{{if
+                    .CutEnd}}<span title="конец не виден: запись кончилась или оборвалась связь">…</span>{{end}}</td>
+                </tr>
+                {{end}}
+        </tbody>
+    </table>
+    {{end}}
+    {{end}}
+</body>
+
+</html>
+{{end}}
