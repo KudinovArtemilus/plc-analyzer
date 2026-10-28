@@ -293,6 +293,14 @@ func run(ctx context.Context, opt options) error {
 
 	m.sync()
 
+	// Паспорта циклов — в фоне. done закроется, когда фоновая работа завершится:
+	// при остановке дождёмся её, иначе база закрылась бы посреди её запроса.
+	passportsDone := make(chan struct{})
+	go func() {
+		defer close(passportsDone)
+		runPassports(ctx, st, dataRoot)
+	}()
+
 	hs := &http.Server{
 		Handler: srv.Handler(),
 		// Контекст каждого запроса — дочерний от ctx. При остановке он отменяется,
@@ -326,6 +334,7 @@ func run(ctx context.Context, opt options) error {
 
 			// Потом опрос и запись: файлы смен закрываются целыми
 			m.shutdownAll()
+			<-passportsDone // паспорт, который считается сейчас, — не дольше одного файла
 			log.Printf("остановлено за %v", time.Since(t0).Round(time.Millisecond))
 			return nil // база закроется в defer st.Close()
 		case <-reload:
