@@ -36,15 +36,52 @@ func ParseAdmins(list string) (map[string]bool, []string) {
 
 // canEdit — можно ли этому запросу что-то менять
 func (s *Server) canEdit(r *http.Request) bool {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	ip := net.ParseIP(host)
+	ip := net.ParseIP(s.clientIP(r))
 	if ip == nil {
 		return false
 	}
 	return ip.IsLoopback() || s.Admins[ip.String()]
+}
+
+// ---------- За посредником (Caddy): чей это запрос на самом деле ----------
+//
+// Когда перед анализатором стоит посредник с паролем и HTTPS, анализатор слушает только
+// 127.0.0.1, и ВСЕ запросы приходят к нему с 127.0.0.1 — от посредника. Без этой функции
+// любой, кто ввёл пароль, считался бы «этим ПК» и мог бы менять настройки.
+// Настоящий адрес посредник пишет в заголовок X-Forwarded-For.
+//
+// Верим заголовку, только если включено -proxy И запрос пришёл с этого же ПК: подделать
+// заголовок мог бы любой, но достучаться до 127.0.0.1 может только посредник (и сам этот ПК).
+
+// remoteHost — адрес из соединения, без порта
+func remoteHost(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+// forwardedFor — адрес клиента от посредника: последний в X-Forwarded-For (его дописал
+// ближайший посредник — наш). "" — заголовка нет или запрос не с этого ПК.
+func forwardedFor(r *http.Request) string {
+	ip := net.ParseIP(remoteHost(r))
+	xff := r.Header.Get("X-Forwarded-For")
+	if ip == nil || !ip.IsLoopback() || xff == "" {
+		return ""
+	}
+	parts := strings.Split(xff, ",")
+	return strings.TrimSpace(parts[len(parts)-1])
+}
+
+// clientIP — адрес того, кто на самом деле прислал запрос
+func (s *Server) clientIP(r *http.Request) string {
+	if s.Proxy {
+		if f := forwardedFor(r); f != "" {
+			return f
+		}
+	}
+	return remoteHost(r)
 }
 
 // readOnlyMsg — что видит человек за чужим ПК, нажав «изменить»

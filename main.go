@@ -114,6 +114,7 @@ func (m *manager) shutdownAll() {
 type options struct {
 	db, addr, admin, log string
 	python, scripts      string // анализ по паспортам на Python (34d)
+	proxy                bool   // перед анализатором посредник с паролем и HTTPS (35)
 }
 
 // parseFlags разбирает параметры запуска. Справка: plc-analyzer.exe -h
@@ -129,6 +130,7 @@ func parseFlags(args []string) (options, error) {
 	fs.StringVar(&dataRoot, "data", `D:\plc-data`, "папка для записи данных")
 	fs.IntVar(&keepDays, "keep", 30, "сколько дней хранить записи смен")
 	fs.StringVar(&o.python, "python", "", `python.exe для анализа по паспортам; для службы — полный путь, например D:\plc-analyzer\scripts\.venv\Scripts\python.exe`)
+	fs.BoolVar(&o.proxy, "proxy", false, "перед анализатором посредник (Caddy): адрес клиента брать из X-Forwarded-For; вместе с -addr 127.0.0.1:8080")
 	fs.StringVar(&o.scripts, "scripts", "scripts", "папка со скриптами анализа (trend.py, anomaly.py); у службы — рядом с exe")
 	fs.Usage = func() {
 		fmt.Fprintln(fs.Output(), `PLC Analyzer
@@ -284,7 +286,7 @@ func run(ctx context.Context, opt options) error {
 		Store: st, PLC: plcs[0],
 		DataRoot: dataRoot, Cache: archive.NewCache(3),
 		Admins: admins,
-		Python: opt.python, Scripts: opt.scripts,
+		Python: opt.python, Scripts: opt.scripts, Proxy: opt.proxy,
 	}
 	m := &manager{ctx: ctx, st: st, srv: srv, units: map[int64]*unit{}}
 

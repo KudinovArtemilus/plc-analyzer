@@ -77,3 +77,43 @@ func TestAccessCSS(t *testing.T) {
 		t.Errorf("чужой ПК — кнопки должны прятаться, а пришло %q", css)
 	}
 }
+
+// За посредником: настоящий адрес — из X-Forwarded-For, но только с -proxy и только с этого ПК
+func TestProxyClientIP(t *testing.T) {
+	req := func(from, xff string) *http.Request {
+		r := httptest.NewRequest("POST", "/ui/signals", nil)
+		r.RemoteAddr = from + ":51000"
+		if xff != "" {
+			r.Header.Set("X-Forwarded-For", xff)
+		}
+		return r
+	}
+	s := &Server{Admins: map[string]bool{"10.0.0.5": true}}
+
+	// Без -proxy всё как раньше: всё, что пришло через посредника, выглядело бы «этим ПК»
+	if !s.canEdit(req("127.0.0.1", "10.0.0.99")) {
+		t.Error("без -proxy заголовок не учитывается")
+	}
+
+	s.Proxy = true
+	if s.canEdit(req("127.0.0.1", "10.0.0.99")) {
+		t.Error("через посредника чужой ПК не должен менять настройки")
+	}
+	if !s.canEdit(req("127.0.0.1", "10.0.0.5")) {
+		t.Error("через посредника адрес из -admin должен менять")
+	}
+	if !s.canEdit(req("127.0.0.1", "")) {
+		t.Error("сам ПК анализатора напрямую — без заголовка — может менять")
+	}
+	// Подделка: заголовок с чужого ПК не учитываем — решает адрес соединения
+	if s.canEdit(req("10.0.0.99", "127.0.0.1")) {
+		t.Error("поддельный X-Forwarded-For с чужого ПК не должен давать права")
+	}
+	// Цепочка: берём последний адрес — его дописал наш посредник
+	if got := s.clientIP(req("127.0.0.1", "1.2.3.4, 10.0.0.5")); got != "10.0.0.5" {
+		t.Errorf("цепочка: %q", got)
+	}
+	if got := who(req("127.0.0.1", "10.0.0.5")); got != "веб 10.0.0.5 (через посредника)" {
+		t.Errorf("журнал: %q", got)
+	}
+}

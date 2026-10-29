@@ -52,6 +52,7 @@ type Server struct {
 	Cache    *archive.Cache
 	Units    func(id int64) (plc.Status, archive.Status, bool) // состояние любого ПЛК
 	Admins   map[string]bool                                   // кроме этого ПК, менять можно с этих адресов (access.go)
+	Proxy    bool                                              // перед анализатором посредник (Caddy): адрес клиента — из X-Forwarded-For
 	cfgs     sync.Map                                          // id ПЛК → *config
 
 	// Анализ по паспортам на Python (explore.go)

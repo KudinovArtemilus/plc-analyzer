@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"html/template"
 	"log"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -62,12 +61,12 @@ func render(w http.ResponseWriter, name string, data any) {
 }
 
 // who — кто сделал изменение (пока — адрес компьютера, позже — имя пользователя)
+// Через посредника — его настоящий адрес; это только запись в журнал, права решает canEdit.
 func who(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
+	if f := forwardedFor(r); f != "" {
+		return "веб " + f + " (через посредника)"
 	}
-	return "веб " + host
+	return "веб " + remoteHost(r)
 }
 
 // ---------- Страница целиком ----------
