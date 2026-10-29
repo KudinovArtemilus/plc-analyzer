@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -52,6 +53,14 @@ type Server struct {
 	Units    func(id int64) (plc.Status, archive.Status, bool) // состояние любого ПЛК
 	Admins   map[string]bool                                   // кроме этого ПК, менять можно с этих адресов (access.go)
 	cfgs     sync.Map                                          // id ПЛК → *config
+
+	// Анализ по паспортам на Python (explore.go)
+	Python    string     // python.exe; "" — искать python в PATH
+	Scripts   string     // папка со скриптами trend.py, anomaly.py
+	exploreMu sync.Mutex // один анализ за раз
+
+	// command — как запускать программу; nil — exec.CommandContext. В тестах подменяется.
+	command func(ctx context.Context, name string, args ...string) *exec.Cmd
 }
 
 // SetConfig — новый состав дорожек ПЛК. Безопасно вызывать из любой горутины.
@@ -148,6 +157,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /ui/history/stats", s.historyStats)
 	mux.HandleFunc("GET /steps", s.stepsPage)        // журнал шаговой цепочки по файлу смены
 	mux.HandleFunc("POST /passport", s.savePassport) // настройка паспорта циклов для службы
+	mux.HandleFunc("GET /explore", s.explore)        // тренды и аномалии по паспортам (Python)
 
 	// Слепки
 	mux.HandleFunc("POST /api/snapshots", s.createSnapshot)
