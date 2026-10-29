@@ -114,3 +114,23 @@ func TestExplore(t *testing.T) {
 		t.Errorf("нет python: код %d, %s", w.Code, w.Body.String())
 	}
 }
+
+func TestPythonPath(t *testing.T) {
+	dir := t.TempDir()
+	s := &Server{Scripts: dir}
+	if p := s.pythonPath(); p != "python" {
+		t.Errorf("без окружения: %q, ждали python из PATH", p)
+	}
+	// Окружение рядом со скриптами — берём его (полным путём)
+	venv := filepath.Join(dir, ".venv", "Scripts", "python.exe")
+	os.MkdirAll(filepath.Dir(venv), 0o755)
+	os.WriteFile(venv, nil, 0o755)
+	if p := s.pythonPath(); p != venv {
+		t.Errorf("с окружением: %q, ждали %q", p, venv)
+	}
+	// -python важнее всего
+	s.Python = `C:\Python312\python.exe`
+	if p := s.pythonPath(); p != s.Python {
+		t.Errorf("с -python: %q", p)
+	}
+}

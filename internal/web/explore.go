@@ -94,10 +94,7 @@ func (s *Server) runPython(ctx context.Context, args []string) error {
 	ctx, cancel := context.WithTimeout(ctx, exploreTimeout)
 	defer cancel()
 
-	py := s.Python
-	if py == "" {
-		py = "python"
-	}
+	py := s.pythonPath()
 	command := s.command
 	if command == nil {
 		command = exec.CommandContext
@@ -124,4 +121,27 @@ func (s *Server) runPython(ctx context.Context, args []string) error {
 		msg = "…" + msg[len(msg)-3000:]
 	}
 	return fmt.Errorf("%s: %v\n\n%s", filepath.Base(args[0]), err, msg)
+}
+
+// pythonPath — какой Python запускать:
+//  1. указанный параметром -python;
+//  2. иначе — окружение рядом со скриптами: scripts\.venv\Scripts\python.exe (у службы это
+//     D:\plc-analyzer\scripts\.venv — Python лежит там же, откуда запускается анализатор);
+//  3. иначе — python из PATH.
+func (s *Server) pythonPath() string {
+	if s.Python != "" {
+		return s.Python
+	}
+	for _, p := range []string{
+		filepath.Join(s.Scripts, ".venv", "Scripts", "python.exe"), // Windows
+		filepath.Join(s.Scripts, ".venv", "bin", "python"),         // Linux — для проверки на другом ПК
+	} {
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+			if abs, err := filepath.Abs(p); err == nil {
+				return abs // полный путь: exec не будет искать его в PATH
+			}
+			return p
+		}
+	}
+	return "python"
 }
