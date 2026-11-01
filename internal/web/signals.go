@@ -96,6 +96,13 @@ func (s *Server) signalsPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	plan := pollPlan(rows)
+	if s.Units != nil { // как опрос идёт на самом деле: запросов в секунду и самый долгий
+		if st, _, ok := s.Units(pl.ID); ok {
+			plan.Rate = fmt.Sprint(st.Rate)
+			plan.MaxDur = fmt.Sprintf("%d мс", st.MaxDur.Milliseconds())
+		}
+	}
 	render(w, "page", map[string]any{
 		"PLC":     pl,
 		"PLCs":    all,

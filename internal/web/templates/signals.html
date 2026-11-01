@@ -31,6 +31,39 @@
     на панели аварий, когда сработали, и записываются в <a href="/events?plc={{.PLC.ID}}">журнал событий</a>.
   </div>
 
+    {{with .Plan}}
+  <details class="panel-form plan" {{if .Dups}}open{{end}}>
+    <summary><b>План опроса:</b> {{.Enabled}} сигналов → {{.Requests}} {{if eq .Requests 1}}запрос{{else}}запроса(ов){{end}}
+      за круг, {{.PerSec}} запросов к ПЛК в секунду{{if .Rate}} · сейчас: {{.Rate}}/с, самый долгий
+      {{.MaxDur}}{{end}}{{if .Dups}} · <span class="warn">одинаковые адреса: {{len .Dups}}</span>{{end}}</summary>
+    {{if .Dups}}
+    <div class="bar warn">Сигналы с одинаковым адресом читают одно и то же место ПЛК — почти всегда опечатка:
+      то, что должно было читаться вторым, не видно совсем.</div>
+    <table>
+      <tr><th>Адрес</th><th>Сигналы</th></tr>
+      {{range .Dups}}<tr class="ev-warn"><td class="mono">{{.Addr}}</td><td>{{.Names}}</td></tr>{{end}}
+    </table>
+    {{end}}
+    <table>
+      <tr><th>Частота</th><th>Запрос</th><th>Байты</th><th>Размер</th><th>Сигналов</th><th>Почему отдельный запрос</th></tr>
+      {{range .Groups}}{{$g := .}}{{range $i, $b := .Blocks}}
+      <tr>
+        <td>{{if eq $i 0}}{{$g.Period}}{{end}}</td>
+        <td class="mono">DB{{$b.DB}}</td>
+        <td class="mono">{{$b.From}}–{{$b.To}}</td>
+        <td class="mono">{{$b.Size}} байт</td>
+        <td class="mono">{{$b.Signals}}</td>
+        <td>{{if $b.Why}}{{$b.Why}}{{else}}<span class="muted">—</span>{{end}}</td>
+      </tr>
+      {{end}}{{end}}
+    </table>
+    {{if .Bad}}<p class="bad">Опрос пропустит: {{range .Bad}}<br>{{.}}{{end}}</p>{{end}}
+    <p class="muted">Всего сигналов {{.Total}}, опрашивается {{.Enabled}} (выключенные не опрашиваются).
+      Соседние адреса одной частоты склеиваются в один запрос; один запрос — не больше {{.MaxSize}} байт.
+      Буфер больше — делится на несколько запросов, это нормально.</p>
+  </details>
+  {{end}}
+  
   {{template "addform" .Form}}
   <button class="edit" hx-get="/ui/signals/bulk?plc={{.PLC.ID}}" hx-target="#bulk"> Добавить списком (диапазон битов, из
     Excel)</button>
