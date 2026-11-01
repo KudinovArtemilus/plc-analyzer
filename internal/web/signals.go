@@ -106,6 +106,7 @@ func (s *Server) signalsPage(w http.ResponseWriter, r *http.Request) {
 	render(w, "page", map[string]any{
 		"PLC":     pl,
 		"PLCs":    all,
+		"Plan":    plan,
 		"Signals": rows,
 		"Form":    formView{Row: store.SignalRow{PLCID: pl.ID, Type: "INT", PeriodMs: 100, Scale: 1}},
 	})
