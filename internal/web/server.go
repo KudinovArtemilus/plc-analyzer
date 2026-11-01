@@ -163,6 +163,8 @@ func (s *Server) Handler() http.Handler {
 	// Слепки
 	mux.HandleFunc("POST /api/snapshots", s.createSnapshot)
 	mux.HandleFunc("GET /api/snapshots/categories", s.snapshotCategories)
+	mux.HandleFunc("GET /api/snapshots/marks", s.snapshotMarks) // отметки «вот здесь проблема»
+	mux.HandleFunc("POST /api/snapshots/marks", s.addSnapshotMark)
 	mux.HandleFunc("GET /snapshots", s.snapshotsPage)
 	mux.HandleFunc("GET /ui/snapshots", s.snapshotsList)
 

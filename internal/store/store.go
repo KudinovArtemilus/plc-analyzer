@@ -136,6 +136,9 @@ var migrations = []string{
 	setsSchema,
 	// 8: настройка паспорта циклов — шаг, режим, исходный шаг (passport.go)
 	passportSchema,
+
+	// 9: отметки на слепках — момент аварии или отмеченный вручную (snapshots.go)
+	marksSchema,
 }
 
 func Open(path string) (*Store, error) {

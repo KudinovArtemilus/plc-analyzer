@@ -124,6 +124,7 @@ type snapView struct {
 	Name, Category, Comment string
 	Range, Dur, Signals     string
 	Created, Who, Link      string
+	Mark                    string // «⚑ 09:00:00 · ещё 2» — слепок откроется на этом моменте
 }
 
 func (s *Server) snapshotViews(r *http.Request, plcID int64, category string) ([]snapView, error) {
@@ -139,7 +140,20 @@ func (s *Server) snapshotViews(r *http.Request, plcID int64, category string) ([
 		for _, n := range sn.Signals {
 			q.Add("s", n)
 		}
+		// Есть отметка — открыть сразу вокруг первой: минута до неё и 20 с после, курсор A на ней
+		mark := ""
+		if ms := marksOf(sn); len(ms) > 0 {
+			m := ms[0].Ms
+			q.Set("from", fmt.Sprint(max(sn.FromMs, m-markBefore.Milliseconds())))
+			q.Set("to", fmt.Sprint(min(sn.ToMs, m+markAfter.Milliseconds())))
+			q.Set("ca", fmt.Sprint(m))
+			mark = "⚑ " + timeFromMs(m).Format("15:04:05")
+			if len(ms) > 1 {
+				mark += fmt.Sprintf(" · ещё %d", len(ms)-1)
+			}
+		}
 		out = append(out, snapView{
+			Mark: mark,
 			Name: sn.Name, Category: sn.Category, Comment: sn.Comment,
 			Range:   fmtMs(sn.FromMs) + " — " + timeFromMs(sn.ToMs).Format("15:04:05"),
 			Dur:     fmtDurMs(sn.ToMs - sn.FromMs),

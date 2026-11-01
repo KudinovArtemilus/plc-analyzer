@@ -71,6 +71,31 @@ func snapshotText(w *events.Window) (name, comment string) {
 	return name, strings.Join(lines, "\n")
 }
 
+// maxMarks — больше отметок на слепок не ставим: это «куда смотреть», а не журнал событий
+const maxMarks = 10
+
+// alarmMarks — отметки слепка: когда КАЖДЫЙ сигнал впервые ушёл в аварию. Слепок открывается
+// сразу на первой отметке, красные линии видны на всех дорожках.
+//
+// Только первый приход каждого сигнала: код ошибки, который меняется каждые 100 мс, — это
+// сотни событий одного сигнала, и сотня линий на графике закрыла бы всё (так и было на пробе).
+func alarmMarks(w *events.Window) []store.Mark {
+	seen := map[string]bool{}
+	var out []store.Mark
+	for _, e := range w.Alarms {
+		if seen[e.Bit.Signal] || len(out) == maxMarks {
+			continue
+		}
+		seen[e.Bit.Signal] = true
+		text := e.Bit.Signal
+		if e.Bit.Message != "" {
+			text += " — " + e.Bit.Message
+		}
+		out = append(out, store.Mark{Ms: e.At.UnixMilli(), Text: text})
+	}
+	return out
+}
+
 // saveAlarmSnapshot пишет слепок на диск и в базу. Запускается в отдельной горутине:
 // запись файла не должна задерживать опрос ПЛК.
 func saveAlarmSnapshot(ctx context.Context, st *store.Store, pl store.PLC, gen int,
@@ -101,6 +126,7 @@ func saveAlarmSnapshot(ctx context.Context, st *store.Store, pl store.PLC, gen i
 	_, err := st.AddSnapshot(ctx, "система", store.Snapshot{
 		PLCID: pl.ID, Name: name, Category: "авария", Comment: comment,
 		File: rel, FromMs: w.From.UnixMilli(), ToMs: w.To.UnixMilli(), Signals: names,
+		Marks: alarmMarks(w),
 	})
 	if err != nil {
 		os.Remove(full) // без записи в базе файл никто не найдёт

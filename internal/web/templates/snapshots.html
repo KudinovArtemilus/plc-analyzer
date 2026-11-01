@@ -40,7 +40,7 @@
   {{range .}}
   <tr>
     <td><b>{{.Name}}</b>{{if .Category}}<br><span class="cat">{{.Category}}</span>{{end}}</td>
-    <td>{{.Range}}<br><small>{{.Dur}}</small></td>
+    <td>{{.Range}}<br><small>{{.Dur}}</small>{{if .Mark}}<br><small class="mark">{{.Mark}}</small>{{end}}</td>
     <td>{{.Signals}}</td>
     <td class="comment">{{.Comment}}</td>
     <td><small>{{.Created}}<br>{{.Who}}</small></td>

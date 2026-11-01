@@ -33,6 +33,14 @@
     <span id="status">загрузка…</span>
     <span id="hoverTime"></span>
   </div>
+  <div id="marks" class="marks" hidden>
+    <b>Отметки:</b> <span id="markList"></span>
+    <span class="edit">
+      <input id="markText" placeholder="что здесь: «давление начало падать»" size="34">
+      <button id="btnMark" title="поставить отметку там, где стоит курсор A">⚑ Отметить курсор A</button>
+      <span id="markMsg"></span>
+    </span>
+  </div>
   <div id="cursors" hidden>
     <span id="cursorText"></span>
     <button id="btnClearCur">✕ убрать курсоры</button>
@@ -293,15 +301,66 @@
       // Подписи шагов и кодов из справочников (сигналы ищутся по имени у ПЛК сейчас)
       try { viewer.setTexts(await (await fetch("api/dicts" + plcQ)).json()); } catch (e) { }
       viewer.build(meta.signals.map(s => ({ name: s.name, unit: s.unit, periodMs: s.period_ms })));
+      const marks = await initMarks();
       if (zoom.from != null && zoom.to != null && zoom.to > zoom.from) {
         // Участок не шире записи: файл мог кончиться раньше, чем запас после шага
         await load(Math.max(zoom.from, full.from), Math.min(zoom.to, full.to));
         if (zoom.a != null || zoom.b != null) viewer.setCursors(zoom.a, zoom.b);
+      } else if (marks.length) {
+        await goToMark(marks[0].t); // слепок с отметкой — сразу к ней, даже по старой ссылке
       } else {
         await load();
       }
       if (meta.damaged) setStatus("Файл оборван (например, отключали питание) — показана целая часть", true);
     }
+
+    // ---------- Отметки на слепке (36) ----------
+    // Слепок по аварии — минуты записи по всем сигналам; отметка — красная линия «вот здесь».
+    // Кнопка у отметки — участок вокруг неё (минута до, 20 с после) и курсор A на ней.
+    const isSnapshot = (file || "").startsWith("snapshots/");
+    const MARK_BEFORE = 60, MARK_AFTER = 20; // секунды, как на странице «Слепки»
+
+    async function goToMark(t) {
+      const from = Math.max(full.from, t - MARK_BEFORE), to = Math.min(full.to, t + MARK_AFTER);
+      viewer.setRange(from, to);
+      await load(from, to);
+      viewer.setCursors(t, null);
+    }
+
+    async function initMarks() {
+      if (!isSnapshot) return [];
+      let list = [];
+      try { list = await (await fetch("api/snapshots/marks?" + query({}))).json(); } catch (e) { return []; }
+      const marks = list.map(m => ({ t: m.ms / 1000, text: m.text }));
+      viewer.setMarks(marks);
+      const box = document.getElementById("markList");
+      box.textContent = "";
+      [...marks].sort((x, y) => x.t - y.t).forEach(m => { // кнопки — по времени; ручные вперемешку с авариями
+        const b = document.createElement("button");
+        b.textContent = "⚑ " + fmtTime(m.t) + " " + m.text;
+        b.title = "показать участок вокруг отметки";
+        b.onclick = () => goToMark(m.t);
+        box.appendChild(b);
+      });
+      if (!marks.length) box.textContent = "пока нет — поставьте курсор A на место проблемы и нажмите «Отметить»";
+      document.getElementById("marks").hidden = false;
+      return marks;
+    }
+
+    document.getElementById("btnMark").onclick = async () => {
+      const msg = document.getElementById("markMsg");
+      const a = viewer.getCursors().a;
+      if (a == null) { msg.textContent = "сначала поставьте курсор A (ЛКМ на графике)"; return; }
+      const resp = await fetch("api/snapshots/marks?" + query({}), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ms: Math.round(a * 1000), text: document.getElementById("markText").value }),
+      });
+      if (!resp.ok) { msg.textContent = "ошибка: " + await resp.text(); return; }
+      document.getElementById("markText").value = "";
+      msg.textContent = "отмечено ✓";
+      initMarks();
+    };
 
     document.getElementById("btnReset").onclick = () => load();
     document.getElementById("btnOrder").onclick = () => viewer.resetOrder();

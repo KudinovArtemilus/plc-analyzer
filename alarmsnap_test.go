@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -64,5 +65,19 @@ func TestSnapshotText(t *testing.T) {
 	}
 	if !strings.Contains(comment, "09:00:00.150  AL1 — Перегрев масла") || !strings.Contains(comment, "AL2") {
 		t.Fatalf("комментарий %q", comment)
+	}
+
+	// Отметки — первый приход каждого сигнала: повторы AL1 (код меняется) не плодят линии
+	w.Alarms = append(w.Alarms, events.Edge{Bit: events.Bit{Signal: "AL1", Message: "Перегрев масла"}, At: at.Add(2 * time.Second)})
+	m := alarmMarks(w)
+	if len(m) != 2 || m[0].Ms != at.UnixMilli() || m[0].Text != "AL1 — Перегрев масла" || m[1].Ms != at.Add(time.Second).UnixMilli() {
+		t.Fatalf("отметки %+v", m)
+	}
+	// И не больше maxMarks, даже если сигналов в лавине много
+	for i := 0; i < 30; i++ {
+		w.Alarms = append(w.Alarms, events.Edge{Bit: events.Bit{Signal: fmt.Sprint("X", i)}, At: at})
+	}
+	if m := alarmMarks(w); len(m) != maxMarks {
+		t.Errorf("отметок %d, ждали не больше %d", len(m), maxMarks)
 	}
 }

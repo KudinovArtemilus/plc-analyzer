@@ -701,3 +701,21 @@ svg.chart .bar {
 svg.chart .bar-rest {
   fill: var(--warn);
 }
+
+/* Отметки на слепке (36): красный — по смыслу, это момент аварии или отмеченная проблема */
+.marks {
+  margin: 6px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.marks #markList button {
+  color: var(--alarm, #b00000);
+  border-color: var(--alarm, #b00000);
+}
+
+small.mark {
+  color: var(--alarm, #b00000);
+}

@@ -48,9 +48,40 @@ function createViewer(cfg) {
   let overlays = null; // наложения
   let range = null;    // видимый участок { min, max }
   let curA = null, curB = null;
+  let marks = [];      // отметки на слепке: [{t: секунды, text}] — красные линии на всех дорожках
   let justZoomed = false;
 
+  // Отметки: красный пунктир на каждой дорожке, подпись — только на верхней (иначе на 90 дорожках
+  // одна и та же надпись 90 раз). Рисуются ДО курсоров: курсор A часто стоит прямо на отметке.
+  function drawMarks(u) {
+    if (!marks.length) return;
+    const ctx = u.ctx, dpr = window.devicePixelRatio;
+    const { left, top, width, height } = u.bbox;
+    const vis = visualLanes();
+    const first = vis.length && vis[0].u === u;
+    marks.forEach(m => {
+      const x = Math.round(u.valToPos(m.t, "x", true));
+      if (x < left || x > left + width) return;
+      ctx.save();
+      ctx.strokeStyle = ISA.mark;
+      ctx.lineWidth = 1.5 * dpr;
+      ctx.setLineDash([6 * dpr, 4 * dpr]);
+      ctx.beginPath();
+      ctx.moveTo(x, top);
+      ctx.lineTo(x, top + height);
+      ctx.stroke();
+      if (first) {
+        ctx.setLineDash([]);
+        ctx.fillStyle = ISA.mark;
+        ctx.font = `${11 * dpr}px sans-serif`;
+        ctx.fillText("⚑ " + m.text, x + 4 * dpr, top + 12 * dpr);
+      }
+      ctx.restore();
+    });
+  }
+
   function drawCursors(u) {
+    drawMarks(u);
     const ctx = u.ctx;
     const { left, top, width, height } = u.bbox;
     [[curA, COLOR_A], [curB, COLOR_B]].forEach(([t, color]) => {
@@ -306,6 +337,8 @@ function createViewer(cfg) {
     getCursors: () => ({ a: curA, b: curB }),
     // setCursors — поставить курсоры по времени (секунды); null — убрать курсор
     setCursors: (a, b) => { curA = a; curB = b; updateCursors(); },
+    // setMarks — отметки на слепке: [{t: секунды, text}]
+    setMarks: list => { marks = list || []; updateCursors(); },
     getRange: () => range,
     // setTexts — подписи из справочников; вызывать ДО build: от них зависит ширина колонки значений
     setTexts: t => {
