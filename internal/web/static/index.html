@@ -18,6 +18,7 @@
     <a href="/history">История</a>
     <a href="/snapshots">Слепки</a>
     <a href="/events" id="lnkEvents">События</a>
+    <a href="/logout" class="logout" title="выйти: в следующий раз — снова пароль">выйти</a>
   </h3>
   <div id="plcstatus" hx-get="ui/status" hx-vals='js:{plc: PLC_ID}' hx-trigger="load, every 1s">загрузка статуса…</div>
   <div id="recstatus" hx-get="ui/recstatus" hx-vals='js:{plc: PLC_ID}' hx-trigger="load, every 2s"></div>

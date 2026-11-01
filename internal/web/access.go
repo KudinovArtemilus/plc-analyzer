@@ -91,7 +91,8 @@ const readOnlyMsg = "Только просмотр: изменять настр�
 // guard пропускает чтение всем, а изменения — только canEdit
 func (s *Server) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet || r.Method == http.MethodHead || s.canEdit(r) {
+		// Вход по паролю (POST /login) — не изменение настроек: его должен пройти любой ПК
+		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.URL.Path == "/login" || s.canEdit(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -132,5 +133,8 @@ func (s *Server) accessCSS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache") // права могут поменяться при перезапуске с другим -admin
 	if !s.canEdit(r) {
 		w.Write([]byte(readOnlyCSS))
+	}
+	if s.isLocal(r) { // на ПК анализатора входа нет — и «выйти» ни к чему
+		w.Write([]byte("\n.logout {display:none !important}"))
 	}
 }

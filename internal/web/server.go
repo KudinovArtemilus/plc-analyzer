@@ -59,6 +59,7 @@ type Server struct {
 	Python    string     // python.exe; "" — искать python в PATH
 	Scripts   string     // папка со скриптами trend.py, anomaly.py
 	exploreMu sync.Mutex // один анализ за раз
+	auth      sessions   // входы по паролю для просмотра (auth.go)
 
 	// command — как запускать программу; nil — exec.CommandContext. В тестах подменяется.
 	command func(ctx context.Context, name string, args ...string) *exec.Cmd
@@ -187,8 +188,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /ui/plcs/{id}", s.deletePLC)
 	mux.HandleFunc("GET /ui/plcs/{id}/state", s.plcState)
 
-	// Смотреть — всем, менять — только этому ПК и адресам из -admin (access.go)
-	return s.guard(mux)
+	mux.HandleFunc("GET /login", s.loginPage) // вход по паролю для просмотра с других ПК (37)
+	mux.HandleFunc("POST /login", s.login)
+	mux.HandleFunc("GET /logout", s.logout)
+
+	// Сначала «кто ты» (пароль для просмотра), потом «что тебе можно» (менять — только этому ПК)
+	return s.requireLogin(s.guard(mux))
 }
 
 // plcsJSON — список ПЛК для выпадающего списка на странице графиков

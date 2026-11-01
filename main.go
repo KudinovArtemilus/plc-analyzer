@@ -166,6 +166,13 @@ func parseFlags(args []string) (options, error) {
 // Вся работа анализатора — в run, одна и та же во всех режимах.
 func main() {
 	args := os.Args[1:]
+	if len(args) > 0 && args[0] == "password" { // пароль для просмотра (37) — работает и без службы
+		if err := passwordCmd(args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "ОШИБКА:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(args) > 0 && isCommand(args[0]) {
 		if err := command(args[0], args[1:]); err != nil {
 			fmt.Fprintln(os.Stderr, "ОШИБКА:", err)

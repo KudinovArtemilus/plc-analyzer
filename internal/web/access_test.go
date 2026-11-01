@@ -69,9 +69,13 @@ func TestAccessCSS(t *testing.T) {
 		return w.Body.String()
 	}
 	for _, own := range []string{"127.0.0.1", "10.0.0.5"} {
-		if css := get(own); css != "" {
+		if css := get(own); strings.Contains(css, ".edit") {
 			t.Errorf("%s может менять — кнопки прятать нельзя, а пришло %q", own, css)
 		}
+	}
+	// На самом ПК анализатора входа нет — «выйти» прячется; у остальных — нет
+	if !strings.Contains(get("127.0.0.1"), ".logout") || strings.Contains(get("10.0.0.5"), ".logout") {
+		t.Error("«выйти» должно прятаться только на ПК анализатора")
 	}
 	if css := get("10.0.0.99"); !strings.Contains(css, "display: none") || !strings.Contains(css, ".edit") {
 		t.Errorf("чужой ПК — кнопки должны прятаться, а пришло %q", css)

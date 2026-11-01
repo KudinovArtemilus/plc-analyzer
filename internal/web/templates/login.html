@@ -1,0 +1,24 @@
+{{define "login"}}
+<!doctype html>
+<html lang="ru">
+
+<head>
+  <meta charset="utf-8">
+  <title>Вход — PLC Analyzer</title>
+  <link rel="stylesheet" href="/isa101.css">
+</head>
+
+<body>
+  <h3>PLC Analyzer</h3>
+  <form method="post" action="/login" class="panel-form" style="max-width: 360px">
+    <input type="hidden" name="next" value="{{.Next}}">
+    <p>Для просмотра с этого компьютера нужен пароль.</p>
+    <p><input type="password" name="password" autofocus autocomplete="current-password" style="width: 100%"></p>
+    <button type="submit">Войти</button>
+    {{if .Err}}<p class="bad">{{.Err}}</p>{{end}}
+  </form>
+  <p class="muted">Пароль выдаёт служба АСУП. Менять настройки можно только на ПК анализатора.</p>
+</body>
+
+</html>
+{{end}}

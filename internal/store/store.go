@@ -139,6 +139,9 @@ var migrations = []string{
 
 	// 9: отметки на слепках — момент аварии или отмеченный вручную (snapshots.go)
 	marksSchema,
+
+	// 10: настройки программы «ключ — значение»: пароль для просмотра (settings.go)
+	settingsSchema,
 }
 
 func Open(path string) (*Store, error) {
