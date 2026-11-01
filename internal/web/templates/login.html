@@ -4,20 +4,98 @@
 
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Вход — PLC Analyzer</title>
   <link rel="stylesheet" href="/isa101.css">
+  <style>
+    /* Страница входа: карточка по центру экрана. Цвета — из isa101.css: серое, без декора;
+       красное — только сообщение об ошибке (это отклонение, как в ISA-101). */
+    body.login {
+      min-height: 100vh;
+      margin: 0;
+      padding: 16px;
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .login-card {
+      width: 100%;
+      max-width: 360px;
+      padding: 28px 28px 22px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-top: 4px solid var(--accent);
+      border-radius: 2px;
+    }
+
+    .login-card h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 600;
+    }
+
+    .login-card .sub {
+      margin: 4px 0 22px;
+      color: var(--text-2);
+    }
+
+    .login-card label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    .login-card input[type=password] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      font-size: 16px;
+    }
+
+    .login-card button {
+      width: 100%;
+      margin: 14px 0 0;
+      padding: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .login-card button:hover {
+      background: #3b5f84;
+    }
+
+    .login-card .bar {
+      margin: 14px 0 0;
+    }
+
+    .login-card .foot {
+      margin: 18px 0 0;
+      font-size: 12px;
+      color: var(--text-3);
+      line-height: 1.5;
+    }
+  </style>
 </head>
 
-<body>
-  <h3>PLC Analyzer</h3>
-  <form method="post" action="/login" class="panel-form" style="max-width: 360px">
+<body class="login">
+  <form method="post" action="/login" class="login-card">
     <input type="hidden" name="next" value="{{.Next}}">
-    <p>Для просмотра с этого компьютера нужен пароль.</p>
-    <p><input type="password" name="password" autofocus autocomplete="current-password" style="width: 100%"></p>
+    <h1>PLC Analyzer</h1>
+    <p class="sub">Анализатор данных ПЛК</p>
+
+    <label for="pw">Пароль для просмотра</label>
+    <input id="pw" type="password" name="password" autofocus autocomplete="current-password" required>
     <button type="submit">Войти</button>
-    {{if .Err}}<p class="bad">{{.Err}}</p>{{end}}
+
+    {{if .Err}}<div class="bar bad" role="alert">{{.Err}}</div>{{end}}
+
+    <p class="foot">Пароль выдаёт служба АСУП.<br>Менять настройки можно только на ПК анализатора.</p>
   </form>
-  <p class="muted">Пароль выдаёт служба АСУП. Менять настройки можно только на ПК анализатора.</p>
 </body>
 
 </html>
