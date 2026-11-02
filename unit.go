@@ -151,7 +151,8 @@ func (u *unit) run(ctx context.Context) {
 		for i := range keyRows {
 			keyRows[i].Hidden = false
 		}
-		key := fmt.Sprintf("%s|%v|%s", fresh.Name, keyRows, limitsKey(lims))
+		// PDU — в отпечатке: от него зависит, как сигналы делятся на запросы
+		key := fmt.Sprintf("%s|%d|%v|%s", fresh.Name, fresh.PDU, keyRows, limitsKey(lims))
 
 		if key == lastKey {
 			return
@@ -388,7 +389,8 @@ func buildGroups(pl store.PLC, rows []store.SignalRow) []plc.Group {
 		}
 		sigs = append(sigs, s)
 	}
-	return plc.BuildGroups(sigs, plc.DefaultMaxGap, plc.DefaultMaxSize)
+	// Размер запроса — от PDU этого ПЛК: у S7-1500 (480) запросы вдвое крупнее, чем у S7-300 (240)
+	return plc.BuildGroups(sigs, plc.DefaultMaxGap, plc.MaxBlock(pl.PDU))
 }
 
 func toSignal(r store.SignalRow) (plc.Signal, error) {

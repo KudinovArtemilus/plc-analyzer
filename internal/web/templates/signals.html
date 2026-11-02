@@ -32,10 +32,12 @@
   </div>
 
     {{with .Plan}}
-  <details class="panel-form plan" {{if .Dups}}open{{end}}>
+  <details class="panel-form plan" {{if or .Dups .Hint}}open{{end}}>
     <summary><b>План опроса:</b> {{.Enabled}} сигналов → {{.Requests}} {{if eq .Requests 1}}запрос{{else}}запроса(ов){{end}}
       за круг, {{.PerSec}} запросов к ПЛК в секунду{{if .Rate}} · сейчас: {{.Rate}}/с, самый долгий
-      {{.MaxDur}}{{end}}{{if .Dups}} · <span class="warn">одинаковые адреса: {{len .Dups}}</span>{{end}}</summary>
+      {{.MaxDur}}{{end}}{{if .Dups}} · <span class="warn">одинаковые адреса: {{len .Dups}}</span>{{end}}{{if .Hint}}
+      · <span class="warn">PDU</span>{{end}}</summary>
+    {{if .Hint}}<div class="bar warn">{{.Hint}}</div>{{end}}
     {{if .Dups}}
     <div class="bar warn">Сигналы с одинаковым адресом читают одно и то же место ПЛК — почти всегда опечатка:
       то, что должно было читаться вторым, не видно совсем.</div>
@@ -59,7 +61,8 @@
     </table>
     {{if .Bad}}<p class="bad">Опрос пропустит: {{range .Bad}}<br>{{.}}{{end}}</p>{{end}}
     <p class="muted">Всего сигналов {{.Total}}, опрашивается {{.Enabled}} (выключенные не опрашиваются).
-      Соседние адреса одной частоты склеиваются в один запрос; один запрос — не больше {{.MaxSize}} байт.
+      Соседние адреса одной частоты склеиваются в один запрос; один запрос — не больше {{.MaxSize}} байт
+      (PDU {{.PDU}} минус заголовок и запас).
       Буфер больше — делится на несколько запросов, это нормально.</p>
   </details>
   {{end}}

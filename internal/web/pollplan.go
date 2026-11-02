@@ -1,6 +1,7 @@
 package web
 
 import (
+	"cmp"
 	"fmt"
 	"sort"
 	"strings"
@@ -41,15 +42,18 @@ type planView struct {
 	Requests       int    // запросов за один круг опроса (все группы)
 	PerSec         string // запросов к ПЛК в секунду
 	MaxSize        int    // больше этого блок не делаем — поэтому большой буфер делится
+	PDU            int    // размер PDU из настройки ПЛК (от него MaxSize)
+	Hint           string // ПЛК при подключении дал другой PDU — что поменять
 	Groups         []planGroup
 	Dups           []planDup
 	Bad            []string // сигналы, которые опрос пропустит: адрес или тип не разбираются
 	Rate, MaxDur   string   // как опрос идёт на самом деле (из состояния опроса)
 }
 
-// pollPlan — план опроса по строкам базы (как его строит служба: только включённые сигналы)
-func pollPlan(rows []store.SignalRow) planView {
-	v := planView{Total: len(rows), MaxSize: plc.DefaultMaxSize}
+// pollPlan — план опроса по строкам базы (как его строит служба: только включённые сигналы).
+// pdu — из настройки ПЛК: от него размер одного запроса (plc.MaxBlock).
+func pollPlan(rows []store.SignalRow, pdu int) planView {
+	v := planView{Total: len(rows), PDU: cmp.Or(pdu, store.DefaultPDU), MaxSize: plc.MaxBlock(pdu)}
 	var sigs []plc.Signal
 	byAddr := map[string][]string{}
 	for _, r := range rows {
@@ -68,12 +72,12 @@ func pollPlan(rows []store.SignalRow) planView {
 	}
 
 	perSec := 0.0
-	for _, g := range plc.BuildGroups(sigs, plc.DefaultMaxGap, plc.DefaultMaxSize) {
+	for _, g := range plc.BuildGroups(sigs, plc.DefaultMaxGap, v.MaxSize) {
 		pg := planGroup{Period: fmtPeriod(g.Period), Signals: len(g.Signals)}
 		for i, b := range g.Blocks {
 			pb := planBlock{DB: b.DB, From: b.Start, To: b.Start + b.Size - 1, Size: b.Size, Signals: len(b.Signals)}
 			if i > 0 {
-				pb.Why = splitReason(g.Blocks[i-1], b)
+				pb.Why = splitReason(g.Blocks[i-1], b, v.MaxSize)
 			}
 			pg.Blocks = append(pg.Blocks, pb)
 		}
@@ -95,14 +99,35 @@ func pollPlan(rows []store.SignalRow) planView {
 }
 
 // splitReason — почему блок b не склеился с предыдущим (те же правила, что в plc.BuildGroups)
-func splitReason(prev, b plc.Block) string {
+func splitReason(prev, b plc.Block, maxSize int) string {
 	if prev.DB != b.DB {
 		return "другой DB"
 	}
 	if gap := b.Start - (prev.Start + prev.Size); gap > plc.DefaultMaxGap {
 		return fmt.Sprintf("пропуск %d байт между адресами (склеиваем до %d)", gap, plc.DefaultMaxGap)
 	}
-	return fmt.Sprintf("вместе было бы больше %d байт — предел одного запроса", plc.DefaultMaxSize)
+	return fmt.Sprintf("вместе было бы больше %d байт — предел одного запроса", maxSize)
+}
+
+// pduHint — сравнить PDU из настройки (set) с тем, что ПЛК дал при подключении (got).
+// Пусто — всё сходится или ПЛК ещё не подключался.
+func pduHint(set, got int) string {
+	if got <= 0 {
+		return ""
+	}
+	set = cmp.Or(set, store.DefaultPDU)
+	switch {
+	case plc.MaxBlock(got) < plc.MaxBlock(set):
+		// Опрос работает: gos7 сама разрежет большой блок, — но обменов больше, чем показано здесь
+		return fmt.Sprintf("ПЛК при подключении дал PDU %d байт, а в настройке ПЛК указано %d. "+
+			"Опрос работает (библиотека сама дорежет запросы), но обменов с ПЛК больше, чем в этой таблице. "+
+			"Поставьте PDU %d на странице «ПЛК».", got, set, got)
+	case plc.MaxBlock(got) > plc.MaxBlock(set):
+		return fmt.Sprintf("ПЛК при подключении дал PDU %d байт, а в настройке указано %d. "+
+			"Можно поставить %d на странице «ПЛК»: запросы станут крупнее, а их — меньше.",
+			got, set, min(got, plc.PDUMax))
+	}
+	return ""
 }
 
 func fmtPeriod(d time.Duration) string {

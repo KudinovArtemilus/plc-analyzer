@@ -1,6 +1,7 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -22,7 +23,11 @@ type PLC struct {
 	IP   string
 	Rack int
 	Slot int
+	PDU  int // размер пакета S7, байт: 240 (S7-300/1200) или 480 (S7-400/1500) — от него размер запроса
 }
+
+// DefaultPDU — PDU, если не указан: подходит любому ПЛК
+const DefaultPDU = 240
 
 // Типы сигналов
 const (
@@ -142,6 +147,10 @@ var migrations = []string{
 
 	// 10: настройки программы «ключ — значение»: пароль для просмотра (settings.go)
 	settingsSchema,
+
+	// 11: размер PDU у ПЛК — от него зависит, сколько байт читается одним запросом.
+	//     У старых ПЛК — 240: так анализатор работал до этой версии.
+	`ALTER TABLE plcs ADD COLUMN pdu INTEGER NOT NULL DEFAULT 240;`,
 }
 
 func Open(path string) (*Store, error) {
@@ -206,7 +215,7 @@ func (s *Store) Close() error {
 
 func (s *Store) PLCs(ctx context.Context) ([]PLC, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, name, ip, rack, slot FROM plcs ORDER BY id`)
+		`SELECT id, name, ip, rack, slot, pdu FROM plcs ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +224,7 @@ func (s *Store) PLCs(ctx context.Context) ([]PLC, error) {
 	var out []PLC
 	for rows.Next() {
 		var p PLC
-		if err := rows.Scan(&p.ID, &p.Name, &p.IP, &p.Rack, &p.Slot); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.IP, &p.Rack, &p.Slot, &p.PDU); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -226,8 +235,8 @@ func (s *Store) PLCs(ctx context.Context) ([]PLC, error) {
 func (s *Store) PLC(ctx context.Context, id int64) (PLC, error) {
 	var p PLC
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, name, ip, rack, slot FROM plcs WHERE id = ?`, id).
-		Scan(&p.ID, &p.Name, &p.IP, &p.Rack, &p.Slot)
+		`SELECT id, name, ip, rack, slot, pdu FROM plcs WHERE id = ?`, id).
+		Scan(&p.ID, &p.Name, &p.IP, &p.Rack, &p.Slot, &p.PDU)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, ErrNotFound
 	}
@@ -286,18 +295,20 @@ func (s *Store) ChangeCount(ctx context.Context) (int, error) {
 // ---------- Изменения (каждое — вместе с записью в журнал) ----------
 
 func (s *Store) AddPLC(ctx context.Context, who string, p PLC) (int64, error) {
+	p.PDU = cmp.Or(p.PDU, DefaultPDU) // не указан — 240
 	return s.change(ctx, who, "добавлен ПЛК",
-		fmt.Sprintf("%s (%s, слот %d)", p.Name, p.IP, p.Slot),
-		`INSERT INTO plcs (name, ip, rack, slot) VALUES (?, ?, ?, ?)`,
-		p.Name, p.IP, p.Rack, p.Slot)
+		fmt.Sprintf("%s (%s, слот %d, PDU %d)", p.Name, p.IP, p.Slot, p.PDU),
+		`INSERT INTO plcs (name, ip, rack, slot, pdu) VALUES (?, ?, ?, ?, ?)`,
+		p.Name, p.IP, p.Rack, p.Slot, p.PDU)
 }
 
 func (s *Store) UpdatePLC(ctx context.Context, who string, old, p PLC) error {
+	p.PDU = cmp.Or(p.PDU, DefaultPDU)
 	_, err := s.change(ctx, who, "изменён ПЛК",
-		fmt.Sprintf("%s (%s, rack %d, slot %d) → %s (%s, rack %d, slot %d)",
-			old.Name, old.IP, old.Rack, old.Slot, p.Name, p.IP, p.Rack, p.Slot),
-		`UPDATE plcs SET name = ?, ip = ?, rack = ?, slot = ? WHERE id = ?`,
-		p.Name, p.IP, p.Rack, p.Slot, p.ID)
+		fmt.Sprintf("%s (%s, rack %d, slot %d, PDU %d) → %s (%s, rack %d, slot %d, PDU %d)",
+			old.Name, old.IP, old.Rack, old.Slot, old.PDU, p.Name, p.IP, p.Rack, p.Slot, p.PDU),
+		`UPDATE plcs SET name = ?, ip = ?, rack = ?, slot = ?, pdu = ? WHERE id = ?`,
+		p.Name, p.IP, p.Rack, p.Slot, p.PDU, p.ID)
 	return err
 }
 

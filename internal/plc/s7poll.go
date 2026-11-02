@@ -27,6 +27,12 @@ func (c *Client) Close() {
 	c.handler.Close()
 }
 
+// PDU — размер пакета, о котором договорились с ПЛК при подключении (байт).
+// PDULength — поле библиотеки gos7, она заполняет его в Connect.
+func (c *Client) PDU() int {
+	return c.handler.PDULength
+}
+
 // Read читает весь блок одним запросом в buf
 func (c *Client) Read(b Block, buf []byte) error {
 	return c.client.AGReadDB(b.DB, b.Start, b.Size, buf)

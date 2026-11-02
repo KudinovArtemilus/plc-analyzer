@@ -26,7 +26,7 @@ func TestPollPlan(t *testing.T) {
 		{Name: "Выключен", Addr: "DB103.DBW2", Type: "INT", PeriodMs: 100},
 		row("Плохой", "DB103.XYZ", "INT", 100),
 	}
-	v := pollPlan(rows)
+	v := pollPlan(rows, 240)
 	if v.Total != 11 || v.Enabled != 10 || len(v.Bad) != 1 {
 		t.Fatalf("сигналов %d/%d, плохих %v", v.Enabled, v.Total, v.Bad)
 	}

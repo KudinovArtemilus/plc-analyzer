@@ -26,6 +26,7 @@ type Status struct {
 	MaxDur    time.Duration
 	Errors    int
 	Outages   int
+	PDU       int // размер PDU, о котором договорились при последнем подключении (0 — ещё не было)
 }
 
 // Poller — опрос всех групп сигналов одного ПЛК через одно соединение.
@@ -128,8 +129,12 @@ func (p *Poller) Run(ctx context.Context, out chan<- Sample) {
 			continue
 		}
 
+		p.mu.Lock()
+		p.st.PDU = c.PDU()
+		p.mu.Unlock()
+
 		if lostAt.IsZero() {
-			log.Printf("[%s] подключено", p.IP)
+			log.Printf("[%s] подключено, PDU %d байт", p.IP, c.PDU())
 		} else {
 			log.Printf("[%s] связь восстановлена, простой %v",
 				p.IP, time.Since(lostAt).Round(time.Second))

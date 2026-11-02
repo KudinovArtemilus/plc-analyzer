@@ -26,6 +26,7 @@
         <th>IP</th>
         <th>rack</th>
         <th>slot</th>
+        <th title="размер пакета S7: от него — сколько байт читается одним запросом">PDU</th>
         <th>Состояние</th>
         <th></th>
       </tr>
@@ -49,8 +50,9 @@
   IP <input name="ip" placeholder="192.168.0.10" value="{{.PLC.IP}}" size="14">
   rack <input name="rack" value="{{.PLC.Rack}}" size="2">
   slot <input name="slot" value="{{.PLC.Slot}}" size="2">
+  PDU {{template "pdusel" .PLC.PDU}}
   <button>Добавить</button>
-  <small>S7-300: slot 2 · S7-1200/1500: slot 1</small>
+  <small>S7-300: slot 2, PDU 240 · S7-1200: slot 1, PDU 240 · S7-1500: slot 1, PDU 480</small>
   {{if .Err}}<span class="err">{{.Err}}</span>{{end}}
 </form>
 {{end}}
@@ -61,6 +63,7 @@
   <td>{{.IP}}</td>
   <td>{{.Rack}}</td>
   <td>{{.Slot}}</td>
+  <td>{{.PDU}}</td>
   <td hx-get="/ui/plcs/{{.ID}}/state" hx-trigger="load, every 2s">…</td>
   <td>
     <a href="/?plc={{.ID}}">графики</a>
@@ -79,7 +82,7 @@
 {{/* Удалить не вышло — строка с причиной и кнопкой вернуть обычный вид */}}
 <tr id="plc-{{.PLC.ID}}">
   <td><b>{{.PLC.Name}}</b></td>
-  <td colspan="4"><span class="err">Не удалён: {{.Err}}</span></td>
+  <td colspan="5"><span class="err">Не удалён: {{.Err}}</span></td>
   <td><button hx-get="/ui/plcs/{{.PLC.ID}}" hx-target="closest tr" hx-swap="outerHTML">OK</button></td>
 </tr>
 {{end}}
@@ -91,6 +94,7 @@
   <td><input name="ip" value="{{.PLC.IP}}" size="14"></td>
   <td><input name="rack" value="{{.PLC.Rack}}" size="2"></td>
   <td><input name="slot" value="{{.PLC.Slot}}" size="2"></td>
+  <td>{{template "pdusel" .PLC.PDU}}</td>
   <td>{{if .Err}}<span class="err">{{.Err}}</span>{{end}}</td>
   <td>
     <button hx-put="/ui/plcs/{{.PLC.ID}}" hx-include="closest tr" hx-target="closest tr"
@@ -101,9 +105,18 @@
 {{end}}
 
 
+{{define "pdusel"}}
+{{/* Размер PDU: только два значения — больше 480 библиотека gos7 у ПЛК не просит */}}
+<select name="pdu">
+  <option value="240" {{if ne . 480}}selected{{end}}>240</option>
+  <option value="480" {{if eq . 480}}selected{{end}}>480</option>
+</select>
+{{end}}
+
+
 {{define "plcstate"}}
 {{if not .Running}}<span class="muted">запускается…</span>
-{{else if .St.Connected}}<span class="ok">связь есть</span> · {{.St.Rate}} чт/с · макс {{.Max}}
+{{else if .St.Connected}}<span class="ok">связь есть</span> · {{.St.Rate}} чт/с · макс {{.Max}}{{if .St.PDU}} · ПЛК дал PDU {{.St.PDU}}{{end}}
 {{else}}<span class="bad">▲ НЕТ СВЯЗИ уже {{.Down}}</span>{{end}}
 <br><small>{{if .Rec.File}}запись: {{.RecSize}}{{else}}запись: ожидание данных{{end}}</small>
 {{if .Rec.Dropped}}<br><span class="warn">▲ потеряно точек записи: {{.Rec.Dropped}}</span>{{end}}

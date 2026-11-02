@@ -30,7 +30,7 @@ func (s *Server) plcsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	render(w, "plcs", map[string]any{
 		"PLCs": list,
-		"Form": plcFormView{PLC: store.PLC{Rack: 0, Slot: 2}},
+		"Form": plcFormView{PLC: store.PLC{Rack: 0, Slot: 2, PDU: store.DefaultPDU}},
 	})
 }
 
@@ -156,6 +156,13 @@ func plcFromForm(r *http.Request) (store.PLC, error) {
 	var errRack, errSlot error
 	p.Rack, errRack = strconv.Atoi(strings.TrimSpace(f.Get("rack")))
 	p.Slot, errSlot = strconv.Atoi(strings.TrimSpace(f.Get("slot")))
+	// PDU: поля нет (старая форма) — 240, как раньше
+	p.PDU = store.DefaultPDU
+	pduErr := false
+	if v := strings.TrimSpace(f.Get("pdu")); v != "" {
+		p.PDU, _ = strconv.Atoi(v)
+		pduErr = p.PDU != 240 && p.PDU != 480
+	}
 
 	switch {
 	case p.Name == "":
@@ -166,6 +173,8 @@ func plcFromForm(r *http.Request) (store.PLC, error) {
 		return p, errors.New("rack — число от 0 до 7 (обычно 0)")
 	case errSlot != nil || p.Slot < 0 || p.Slot > 31:
 		return p, errors.New("slot — число от 0 до 31 (S7-300: 2, S7-1200/1500: 1)")
+	case pduErr:
+		return p, errors.New("PDU — 240 (S7-300, S7-1200) или 480 (S7-400, S7-1500)")
 	}
 
 	ip := net.ParseIP(p.IP)
