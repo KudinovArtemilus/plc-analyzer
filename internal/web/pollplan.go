@@ -24,6 +24,9 @@ type planBlock struct {
 	DB, From, To, Size int
 	Signals            int
 	Why                string // почему это отдельный запрос, а не часть предыдущего
+	Free               int    // сколько байт можно добавить в конец запроса, не создавая новый
+	FreeFrom           int    // с какого байта свободно (сразу за последним адресом)
+	FreeHint           string // «или 5 REAL/DINT, или 10 INT/WORD, или 160 BOOL»
 }
 
 type planGroup struct {
@@ -79,6 +82,13 @@ func pollPlan(rows []store.SignalRow, pdu int) planView {
 			if i > 0 {
 				pb.Why = splitReason(g.Blocks[i-1], b, v.MaxSize)
 			}
+			// Запрос может вырасти до предела — но не дальше начала следующего запроса в том же DB
+			limit := b.Start + v.MaxSize
+			if i+1 < len(g.Blocks) && g.Blocks[i+1].DB == b.DB {
+				limit = min(limit, g.Blocks[i+1].Start)
+			}
+			pb.FreeFrom = b.Start + b.Size
+			pb.Free, pb.FreeHint = freeSpace(pb.FreeFrom, limit)
 			pg.Blocks = append(pg.Blocks, pb)
 		}
 		v.Requests += len(g.Blocks)
@@ -128,6 +138,18 @@ func pduHint(set, got int) string {
 			got, set, min(got, plc.PDUMax))
 	}
 	return ""
+}
+
+// freeSpace — что ещё влезет в запрос: байты с from (первый свободный) до limit (не включая).
+// В неоптимизированном DB INT, DINT и REAL стоят только с чётного байта: если первый свободный
+// нечётный, для них один байт пропадает (TIA вставит пустой). Биты — в любой байт, по 8 в байте.
+func freeSpace(from, limit int) (int, string) {
+	free := limit - from
+	if free <= 0 {
+		return 0, ""
+	}
+	even := limit - (from + from%2) // свободно с чётного байта — для INT, DINT, REAL
+	return free, fmt.Sprintf("или %d REAL/DINT, или %d INT/WORD, или %d BOOL", even/4, even/2, free*8)
 }
 
 func fmtPeriod(d time.Duration) string {
