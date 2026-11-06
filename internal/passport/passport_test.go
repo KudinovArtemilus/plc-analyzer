@@ -134,6 +134,11 @@ func TestWriteCSV(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(b.String()), "\n")
+	// Первая строка — подпись программы, дальше таблица
+	if !strings.HasPrefix(lines[0], "# PLC Analyzer") || !strings.Contains(lines[0], "Артём Кудинов") {
+		t.Errorf("подпись: %q", lines[0])
+	}
+	lines = lines[1:]
 	if len(lines) != 3 {
 		t.Fatalf("строк %d, ждали заголовок + 2 цикла:\n%s", len(lines), b.String())
 	}

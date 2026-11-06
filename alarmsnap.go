@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/KudinovArtemilus/plc-analyzer/internal/about"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/archive"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/buffer"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/events"
@@ -104,7 +105,7 @@ func saveAlarmSnapshot(ctx context.Context, st *store.Store, pl store.PLC, gen i
 	sh := archive.ShiftOf(w.From)
 	h := archive.Header{
 		PLC: pl.Name, ShiftDate: sh.Date.Format("2006-01-02"), Shift: sh.Name,
-		Gen: gen, Created: time.Now(), Groups: groups,
+		Gen: gen, Created: time.Now(), Groups: groups, Producer: about.Line(),
 	}
 	// A_… — «авария», чтобы отличать от ручных S_…; миллисекунды — чтобы имена не совпали
 	rel := path.Join("snapshots", "A_"+w.Alarms[0].At.Format("20060102-150405.000")+".pla")

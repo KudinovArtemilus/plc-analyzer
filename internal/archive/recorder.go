@@ -10,6 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/KudinovArtemilus/plc-analyzer/internal/about"
 )
 
 const (
@@ -144,7 +146,7 @@ func (r *Recorder) Run(ctx context.Context) {
 		path := Path(r.root, r.plc, sh, at, gen)
 		h := Header{
 			PLC: r.plc, ShiftDate: sh.Date.Format("2006-01-02"), Shift: sh.Name,
-			Gen: gen, Created: at, Groups: groups,
+			Gen: gen, Created: at, Groups: groups, Producer: about.Line(),
 		}
 		nw, err := Create(path, h)
 		if err != nil {

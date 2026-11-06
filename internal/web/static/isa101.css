@@ -719,3 +719,738 @@ svg.chart .bar-rest {
 small.mark {
   color: var(--alarm, #b00000);
 }
+
+/* =====================================================================
+   ISA-101 — единый стиль «высокоэффективного HMI» для всего проекта.
+
+   1. Нормальное состояние — без цвета, в оттенках серого.
+   2. Цвет — только для отклонений:
+        красный — авария (нет связи, ошибка записи),
+        жёлтый  — предупреждение (потеря точек, файл оборван).
+      Эти цвета больше нигде не используются.
+   3. Состояние кодируется не только цветом: ещё текстом и полосой слева.
+   4. Без градиентов, теней, «объёма» и декоративных цветов.
+   ===================================================================== */
+
+:root {
+  /* Фон и поверхности */
+  --bg: #d4d4d4;
+  /* фон экрана: средне-светлый серый */
+  --panel: #e4e4e4;
+  /* панели, таблицы, дорожки */
+  --panel-2: #d9d9d9;
+  /* заголовки таблиц */
+  --line: #b3b3b3;
+  /* разделители */
+  --border: #8c8c8c;
+  /* рамки полей и кнопок */
+
+  /* Текст */
+  --text: #1e1e1e;
+  --text-2: #4d4d4d;
+  /* второстепенный */
+  --text-3: #777777;
+  /* подсказки, выключенное */
+
+  /* Выбор и действие — приглушённый синий, не «сигнальный» */
+  --accent: #2f4f6f;
+  --accent-bg: #d5dde6;
+
+  /* Отклонения — ТОЛЬКО для отклонений */
+  --alarm: #b00000;
+  --alarm-bg: #f0cfcf;
+  --warn: #c99a00;
+  --warn-text: #5c4600;
+  --warn-bg: #f2e6bb;
+
+  --font: "Segoe UI", Arial, sans-serif;
+  --mono: Consolas, "Courier New", monospace;
+}
+
+/* ---------- Основа ---------- */
+
+body {
+  margin: 0;
+  padding: 12px 16px;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.4 var(--font);
+}
+
+h3 {
+  margin: 6px 0 10px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+h4 {
+  margin: 14px 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+a {
+  color: var(--accent);
+}
+
+small,
+.muted {
+  color: var(--text-3);
+}
+
+/* Подвал: чья программа и какая сборка — мелко и серым, чтобы не спорить с данными */
+footer.about {
+  margin: 28px 0 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.login-card footer.about {
+  margin-top: 14px;
+}
+
+/* Меню вверху страниц */
+nav {
+  margin: -12px -16px 10px;
+  padding: 6px 16px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+}
+
+nav a,
+nav b {
+  margin-right: 14px;
+}
+
+nav b {
+  color: var(--text);
+}
+
+h3 a {
+  font-size: 14px;
+  font-weight: normal;
+  margin-left: 12px;
+}
+
+/* ---------- Элементы управления ---------- */
+
+button {
+  font: inherit;
+  padding: 3px 10px;
+  margin-right: 4px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #efefef;
+}
+
+button.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  padding: 2px 5px;
+  background: #f2f2f2;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---------- Таблицы ---------- */
+
+table {
+  border-collapse: collapse;
+  margin-top: 10px;
+  background: var(--panel);
+}
+
+th,
+td {
+  padding: 5px 9px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+tr.off td {
+  color: var(--text-3);
+}
+
+/* выключенный сигнал */
+tr.editing td {
+  background: var(--accent-bg);
+}
+
+/* ---------- Формы-панели ---------- */
+
+#addform,
+#plcadd,
+.pick,
+#export,
+.panel-form {
+  padding: 7px 10px;
+  margin: 6px 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+}
+
+#export {
+  display: inline-block;
+  margin-left: 12px;
+}
+
+#exportInfo {
+  color: var(--text-2);
+  margin-right: 8px;
+}
+
+.pick label {
+  display: inline-block;
+  min-width: 220px;
+  margin: 2px 8px 2px 0;
+}
+
+.note {
+  padding: 5px 10px;
+  margin: 6px 0;
+  background: var(--accent-bg);
+  border-left: 4px solid var(--accent);
+}
+
+/* ---------- Состояния ---------- */
+
+/* Полоса статуса: в норме серая, при аварии красная, при предупреждении жёлтая */
+.bar {
+  padding: 5px 10px;
+  margin-bottom: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 6px solid var(--border);
+}
+
+.bar.ok {
+  color: var(--text);
+}
+
+/* НОРМА — без цвета, это и есть ISA-101 */
+.bar.bad {
+  background: var(--alarm-bg);
+  border-color: var(--alarm);
+  border-left-width: 10px;
+  /* авария видна и без цвета: полоса толще */
+  color: var(--alarm);
+  font-weight: 600;
+}
+
+.bar.warn {
+  background: var(--warn-bg);
+  border-left-color: var(--warn);
+  color: var(--warn-text);
+  font-weight: 600;
+}
+
+.ok {
+  color: var(--text);
+}
+
+/* норма в тексте — без цвета */
+.bad {
+  color: var(--alarm);
+  font-weight: 600;
+}
+
+/* авария */
+.warn {
+  color: var(--warn-text);
+  font-weight: 600;
+}
+
+/* предупреждение */
+.err {
+  color: var(--alarm);
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+.live {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* «записывается» — это норма */
+
+/* ---------- Страница графиков ---------- */
+
+#plcSel {
+  font-size: 15px;
+  margin-left: 8px;
+}
+
+#toolbar {
+  margin-bottom: 8px;
+}
+
+#btnStop {
+  margin-left: 14px;
+  font-weight: 600;
+}
+
+#hint {
+  color: var(--text-3);
+  font-size: 12px;
+  margin-left: 14px;
+}
+
+#statusRow {
+  margin-bottom: 6px;
+}
+
+#status {
+  color: var(--text-2);
+}
+
+#status.paused {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Стоп — это режим, не авария */
+#status.warn {
+  color: var(--warn-text);
+  font-weight: 600;
+}
+
+#hoverTime {
+  font: 13px var(--mono);
+  color: var(--text-2);
+  margin-left: 14px;
+}
+
+#cursors {
+  margin-bottom: 6px;
+  font: 14px var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+#cursors .a {
+  color: #111111;
+  font-weight: 600;
+}
+
+#cursors .b {
+  color: #0b5394;
+  font-weight: 600;
+}
+
+/* Дорожки */
+#lanes {
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.lane {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.lane:last-child {
+  border-bottom: none;
+}
+
+.lane .name {
+  width: 130px;
+  padding-left: 6px;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lane .name .period {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.lane .val {
+  width: 110px;
+  padding-right: 6px;
+  text-align: right;
+  font: 600 13px var(--mono);
+  font-variant-numeric: tabular-nums;
+  /* цифры одной ширины — значения не «прыгают» */
+  white-space: pre;
+}
+
+/* ---------- Слепки ---------- */
+
+.cat {
+  display: inline-block;
+  padding: 0 6px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-radius: 2px;
+  font-size: 12px;
+}
+
+.comment {
+  white-space: pre-wrap;
+  max-width: 380px;
+  color: var(--text-2);
+}
+
+/* ---------- Порядок дорожек: ⠿ и ▲▼ у имени ---------- */
+
+/* Видны только при наведении на дорожку — в обычном виде экран спокойный */
+.lane .name .ord {
+  float: right;
+  visibility: hidden;
+  white-space: nowrap;
+}
+
+.lane:hover .name .ord {
+  visibility: visible;
+}
+
+.lane .name .ord .grip {
+  cursor: grab;
+  color: var(--text-3);
+  padding: 0 3px;
+  user-select: none;
+}
+
+.lane .name .ord button {
+  padding: 0 3px;
+  margin: 0 0 0 1px;
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.lane.dragging {
+  opacity: 0.5;
+}
+
+/* Строка с осью времени под дорожками */
+.lane.axisrow {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-top: none;
+}
+
+/* ---------- Наложение второго сигнала на дорожку ---------- */
+
+/* .lane задаёт display:flex — без этого правила атрибут hidden не спрятал бы строку */
+.lane[hidden] {
+  display: none;
+}
+
+/* Строка «+ имя» под именем дорожки: цвет и пунктир — как у линии на графике */
+.lane .name .ovl {
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+/* Имя наложенного сигнала сжимается и обрезается многоточием, кнопки — никогда */
+.lane .name .ovl .label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-left: 3px;
+}
+
+.lane .name .ovl .sample,
+.lane .name .ovl button {
+  flex: none;
+}
+
+.lane .name .ovl .sample {
+  display: inline-block;
+  width: 14px;
+  margin-right: 3px;
+  vertical-align: middle;
+  border-top: 2px dashed currentColor;
+}
+
+.lane .name .ovl button {
+  padding: 0 3px;
+  margin: 0 2px 0 0;
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.lane .name .ovl-pick {
+  max-width: 125px;
+  font-size: 11px;
+}
+
+/* ---------- Аварии: панель на Live и журнал событий ---------- */
+
+/* Панель активных аварий: строки-полосы .bar.bad / .bar.warn, плотнее обычных */
+.alarms {
+  margin-bottom: 6px;
+}
+
+.alarms-head {
+  margin: 2px 0 4px;
+}
+
+.alarms-head b {
+  margin-right: 10px;
+}
+
+.alarms .bar {
+  margin-bottom: 2px;
+}
+
+.ev-meta {
+  font-weight: normal;
+  margin-left: 12px;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+/* Журнал: время — моноширинным, чтобы миллисекунды стояли столбиком */
+td.mono {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Активная авария в журнале — красная строка с толстой полосой слева (не только цвет) */
+tr.ev-alarm td {
+  background: var(--alarm-bg);
+  color: var(--alarm);
+}
+
+tr.ev-alarm td:first-child {
+  box-shadow: inset 6px 0 0 var(--alarm);
+  padding-left: 14px;
+}
+
+tr.ev-warn td {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+
+tr.ev-warn td:first-child {
+  box-shadow: inset 6px 0 0 var(--warn);
+  padding-left: 14px;
+}
+
+/* ---------- Аварийные биты дорожками (27c) ---------- */
+
+/* Список выбора аварий под панелью инструментов */
+#alarmPick .pick-item {
+  display: inline-block;
+  min-width: 220px;
+  margin: 2px 10px 2px 0;
+}
+
+/* Кнопка «на график» на полосе аварии — справа, обычным шрифтом */
+.bar .ev-plot {
+  float: right;
+  font-size: 12px;
+  font-weight: normal;
+  padding: 0 6px;
+  margin: 0;
+}
+
+/* Дорожка бита: ✕ рядом с подписью «авария · 100 мс» */
+.lane.bit .bit-hide {
+  padding: 0 3px;
+  font-size: 10px;
+  line-height: 13px;
+  margin: 0;
+}
+
+/* ---------- Массовое добавление сигналов (27f) ---------- */
+
+.bulk .bulk-part {
+  margin: 8px 0;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+
+.bulk-sum {
+  margin: 6px 0;
+}
+
+.bulk-table td {
+  padding: 3px 8px;
+}
+
+tr.bulk-bad td {
+  background: var(--alarm-bg);
+  color: var(--alarm);
+}
+
+/* ---------- Статистика по участку (28b) ---------- */
+
+#stats {
+  margin: 6px 0;
+  padding: 7px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+#stats .stats-close {
+  float: right;
+  padding: 0 6px;
+}
+
+table.stats {
+  margin-top: 6px;
+}
+
+table.stats td {
+  padding: 3px 9px;
+}
+
+/* Числа — по правому краю и одной ширины: столбец читается сверху вниз */
+table.stats td.num {
+  text-align: right;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.stats-note {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+
+/* ---------- Нормы (28c) ---------- */
+
+table.limits td.num {
+  text-align: right;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+
+/* ---------- Подписи из справочников (28g) ---------- */
+
+/* «12 · Зажим закрыт, ждём стол» — длинный текст обрезается многоточием, а не вылезает на график */
+.lane .val {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* «описать» у кода, которого ещё нет в справочнике */
+a.describe {
+  font-size: 12px;
+  margin-left: 6px;
+}
+
+
+/* ---------- Шаги (31b) ---------- */
+/* Необычно долгий проход шага — предупреждение: жёлтый по смыслу ISA-101 */
+table.stats tr.warn-row td {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+
+
+/* ---------- Графики циклов (32c): SVG с сервера ---------- */
+svg.chart {
+  display: block;
+  margin: 6px 0 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  max-width: 100%;
+}
+
+svg.chart .grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+svg.chart .ylab {
+  font: 11px var(--mono);
+  fill: var(--text-2);
+  text-anchor: end;
+}
+
+svg.chart .xlab {
+  font: 11px var(--mono);
+  fill: var(--text-2);
+}
+
+/* выравнивание — атрибутом text-anchor */
+svg.chart .cnt {
+  font: 10px var(--mono);
+  fill: var(--text-2);
+  text-anchor: middle;
+}
+
+svg.chart .pt {
+  fill: var(--text-2);
+}
+
+/* Долгий цикл — предупреждение: жёлтый по смыслу ISA-101 */
+svg.chart .long {
+  fill: var(--warn);
+  stroke: var(--warn-text);
+  stroke-width: 0.5;
+}
+
+svg.chart .median {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+svg.chart .bar {
+  fill: var(--text-3);
+}
+
+svg.chart .bar-rest {
+  fill: var(--warn);
+}
+
+/* Отметки на слепке (36): красный — по смыслу, это момент аварии или отмеченная проблема */
+.marks {
+  margin: 6px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.marks #markList button {
+  color: var(--alarm, #b00000);
+  border-color: var(--alarm, #b00000);
+}
+
+small.mark {
+  color: var(--alarm, #b00000);
+}

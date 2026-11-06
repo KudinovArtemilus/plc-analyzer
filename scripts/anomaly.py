@@ -25,6 +25,7 @@ from urllib.parse import urlencode
 
 import pandas as pd
 
+from pla import about
 from trend import SKIP, load, title  # загрузка и имена признаков — общие с trend.py
 
 Z_CYCLE = 5    # цикл необычный, если хоть один признак дальше 5 «разбросов» от обычного
@@ -177,6 +178,7 @@ tr.warn-row td {{ background: #F6E7A8; }}
 <p class="muted">Обычное значение признака в этой смене против прошлых смен — ловит скачок
 (например, клапан с какого-то дня включается чаще), который тренд за месяц ещё не видит.</p>
 {sh_html}
+{about("anomaly.py")}
 </body></html>"""
 
 

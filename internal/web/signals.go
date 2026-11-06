@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/KudinovArtemilus/plc-analyzer/internal/about"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/plc"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/store"
 )
@@ -25,6 +26,7 @@ var tmpl = template.Must(template.New("").
 		"types":     func() []string { return dataTypes },
 		"kinds":     func() []string { return []string{store.KindTrend, store.KindAlarm, store.KindWarning} },
 		"kindTitle": kindTitle,
+		"about":     about.Line, // подпись в подвале страниц (templates/about.html)
 	}).
 	ParseFS(templatesFS, "templates/*.html"))
 

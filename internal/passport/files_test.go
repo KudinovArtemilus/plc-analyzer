@@ -56,13 +56,13 @@ func TestUpdate(t *testing.T) {
 		t.Fatalf("идущая смена: посчитано %d, %v", n, err)
 	}
 
-	// Запись дописана — паспорт появился: заголовок и два полных цикла
+	// Запись дописана — паспорт появился: подпись программы, заголовок и два полных цикла
 	age(t, pla, time.Hour)
 	if n, err := Update(ctx, root, "Пресс 1", cfg, saved); n != 1 || err != nil {
 		t.Fatalf("законченная смена: посчитано %d, %v", n, err)
 	}
 	b, err := os.ReadFile(csv)
-	if err != nil || len(strings.Split(strings.TrimSpace(string(b)), "\n")) != 3 {
+	if err != nil || len(strings.Split(strings.TrimSpace(string(b)), "\n")) != 4 {
 		t.Fatalf("паспорт:\n%s\n%v", b, err)
 	}
 	if _, err := os.Stat(csv + ".tmp"); !os.IsNotExist(err) {

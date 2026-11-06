@@ -52,6 +52,7 @@
         </tbody>
     </table>
     {{end}}
+  {{template "about"}}
 </body>
 
 </html>
@@ -118,6 +119,7 @@
         onsubmit="return confirm('Удалить справочник «{{.Dict.Name}}» со всеми строками? У сигналов он просто отвяжется.')">
         <button>Удалить справочник</button>
     </form>
+  {{template "about"}}
 </body>
 
 </html>

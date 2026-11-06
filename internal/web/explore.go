@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/KudinovArtemilus/plc-analyzer/internal/about"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/archive"
 )
 
@@ -103,7 +104,8 @@ func (s *Server) runPython(ctx context.Context, args []string) error {
 	cmd := command(ctx, py, args...)
 	// Русский текст ошибок — в UTF-8, а не cp866. cmd.Environ(), а не os.Environ(): если окружение
 	// у команды уже задано (в тестах так), не затираем его, а дополняем
-	cmd.Env = append(cmd.Environ(), "PYTHONIOENCODING=utf-8")
+	// PLCA_ABOUT — подпись программы для подвала отчёта: сборка и автор те же, что на страницах
+	cmd.Env = append(cmd.Environ(), "PYTHONIOENCODING=utf-8", "PLCA_ABOUT="+about.Line())
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 

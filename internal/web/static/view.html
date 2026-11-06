@@ -48,6 +48,7 @@
   <div id="stats" hidden></div>
   <div id="lanes"></div>
 
+  <footer class="about"></footer>
   <script src="uPlot.iife.min.js"></script>
   <script src="isa101.js"></script>
   <script src="lanes.js"></script>
@@ -168,7 +169,8 @@
       const lanes = viewer.getLanes();
       const dpr = window.devicePixelRatio || 1;
       const px = n => n * dpr;
-      const NAME_W = 170, VAL_W = 140, HEAD = 64, FOOT = 34;
+      const NAME_W = 170, VAL_W = 140, HEAD = 64, FOOT = 56; // внизу: курсоры и подпись программы
+      const aboutLine = await ABOUT; // «PLC Analyzer · сборка … · © 2026 Артём Кудинов»
 
       const plotW = lanes[0].u.ctx.canvas.width;
       const axisCanvas = viewer.getAxis().ctx.canvas; // ось времени — отдельной строкой внизу
@@ -223,6 +225,11 @@
       ctx.fillStyle = "#000";
       ctx.font = `${px(13)}px monospace`;
       ctx.fillText(viewer.cursorsText(), px(10), y + px(22));
+
+      // Подпись: откуда картинка и когда выгружена — видно, даже если её переслали дальше
+      ctx.fillStyle = "#777";
+      ctx.font = `${px(11)}px sans-serif`;
+      ctx.fillText(`${aboutLine} · выгружено ${new Date().toLocaleString("ru-RU")}`, px(10), y + px(44));
 
       c.toBlob(blob => {
         const a = document.createElement("a");

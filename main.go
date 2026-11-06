@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/KudinovArtemilus/plc-analyzer/internal/about"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/archive"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/plc"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/store"
@@ -129,15 +130,16 @@ func parseFlags(args []string) (options, error) {
 	fs.StringVar(&o.log, "log", "", `файл лога; по умолчанию plc-analyzer.log в папке -data; "-" — только консоль`)
 	fs.StringVar(&dataRoot, "data", `D:\plc-data`, "папка для записи данных")
 	fs.IntVar(&keepDays, "keep", 30, "сколько дней хранить записи смен")
-	fs.StringVar(&o.python, "python", "", `python.exe для анализа по паспортам; для службы — полный путь, например D:\plc-analyzer\scripts\.venv\Scripts\python.exe`)
+	fs.StringVar(&o.python, "python", "", `python.exe для анализа по паспортам; по умолчанию — scripts\.venv\Scripts\python.exe рядом с exe, иначе python из PATH`)
 	fs.BoolVar(&o.proxy, "proxy", false, "перед анализатором посредник (Caddy): адрес клиента брать из X-Forwarded-For; вместе с -addr 127.0.0.1:8080")
 	fs.StringVar(&o.scripts, "scripts", "scripts", "папка со скриптами анализа (trend.py, anomaly.py); у службы — рядом с exe")
 	fs.Usage = func() {
-		fmt.Fprintln(fs.Output(), `PLC Analyzer
+		fmt.Fprintln(fs.Output(), about.Line()+`
 
   plc-analyzer.exe [параметры]            — работа в окне (Ctrl+C — остановка)
   plc-analyzer.exe install [параметры]    — установить службу Windows с этими параметрами
   plc-analyzer.exe uninstall | start | stop | status
+  plc-analyzer.exe password [off]         — пароль для просмотра с других ПК (off — убрать)
 
 Параметры:`)
 		fs.PrintDefaults()
@@ -244,7 +246,7 @@ func exeDir() string {
 // а не завершает программу сама: решать, что с ней делать, — тому, кто вызвал.
 func run(ctx context.Context, opt options) error {
 	wd, _ := os.Getwd()
-	log.Printf("PLC Analyzer: запуск · папка %s · база %s · лог %s", wd, opt.db, opt.log)
+	log.Printf("%s: запуск · папка %s · база %s · лог %s", about.Line(), wd, opt.db, opt.log)
 
 	// 1. База
 	st, err := store.Open(opt.db)

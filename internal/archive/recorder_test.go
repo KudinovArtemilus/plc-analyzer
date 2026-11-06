@@ -31,7 +31,7 @@ func TestRecorderShiftChange(t *testing.T) {
 	runRecorder(t, root, func(r *Recorder) {
 		r.SetGroups(1, groups)
 		start := at(21, 19, 59).Add(58 * time.Second) // 19:59:58
-		for i := 0; i < 4; i++ {                       // 19:59:58, 59, 20:00:00, 01
+		for i := 0; i < 4; i++ {                      // 19:59:58, 59, 20:00:00, 01
 			r.Add(1, 0, start.Add(time.Duration(i)*time.Second), []float64{float64(i)})
 		}
 	})
@@ -53,6 +53,9 @@ func TestRecorderShiftChange(t *testing.T) {
 			t.Errorf("%s: смена %s, точек %d; ожидалось %s и 2",
 				filepath.Base(files[i]), h.Shift, points, wantShift)
 		}
+		if !strings.Contains(h.Producer, "Артём Кудинов") { // кем записан — в заголовке файла
+			t.Errorf("%s: producer %q", filepath.Base(files[i]), h.Producer)
+		}
 	}
 }
 
@@ -66,8 +69,8 @@ func TestRecorderNewFileOnConfig(t *testing.T) {
 		r.SetGroups(1, g1)
 		r.Add(1, 0, t0, []float64{1})
 		r.SetGroups(2, g2)
-		r.Add(1, 0, t0.Add(time.Second), []float64{2})       // старая конфигурация — отбросится
-		r.Add(2, 0, t0.Add(2*time.Second), []float64{3, 4})  // новая
+		r.Add(1, 0, t0.Add(time.Second), []float64{2})      // старая конфигурация — отбросится
+		r.Add(2, 0, t0.Add(2*time.Second), []float64{3, 4}) // новая
 	})
 
 	files, _ := filepath.Glob(filepath.Join(root, "315F", "2026", "10", "21", "*.pla"))

@@ -7,17 +7,25 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/KudinovArtemilus/plc-analyzer/internal/about"
 )
 
 // WriteCSV — паспорт в CSV: строка на цикл.
 //
 // Формат тот же, что у выгрузки из «Истории»: «;» и десятичная запятая — файл открывается
-// в русском Excel двойным щелчком. В Python: pd.read_csv(path, sep=";", decimal=",").
+// в русском Excel двойным щелчком. Первая строка — подпись программы «# PLC Analyzer · …»,
+// поэтому в Python: pd.read_csv(path, sep=";", decimal=",", skiprows=1)
+// (scripts/trend.py пропускает её сам и читает и старые паспорта без подписи).
 //
 // Имена столбцов латиницей (cycle_s, step_12_s, Pressure.max) — их удобно писать в коде:
 // df["cycle_s"]. Пустая ячейка — значения нет (шаг в этом цикле не проходили, у сигнала
 // не было точек); pandas прочитает её как NaN, и в медианы она не попадёт, в отличие от 0.
 func (t Table) WriteCSV(w io.Writer) error {
+	// Подпись — до csv.Writer: это не строка таблицы, и кавычки ей не нужны
+	if _, err := io.WriteString(w, "# "+about.Line()+"\n"); err != nil {
+		return err
+	}
 	cw := csv.NewWriter(w)
 	cw.Comma = ';'
 

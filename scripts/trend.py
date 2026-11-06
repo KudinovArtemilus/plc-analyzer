@@ -26,6 +26,8 @@ matplotlib.use("Agg")  # без окна — у службы его нет
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 
+from pla import about, read_passport  # подвал отчёта и чтение паспорта — общие для скриптов
+
 MIN_SHIFTS = 6   # меньше смен — о тренде говорить рано
 CHARTS = 6       # графиков в отчёте — по самым заметно меняющимся признакам
 SKIP = {"idle_cut", "passes", "slow_step", "slow_s"}  # не измерения; slow_s — каждый раз другой шаг
@@ -51,7 +53,7 @@ def load(plc_dir, days):
     base = os.path.join(plc_dir, "passport")
     parts = []
     for f in files:
-        d = pd.read_csv(f, sep=";", decimal=",")
+        d = read_passport(f)  # без строки-подписи «# PLC Analyzer …»
         if len(d):  # пустой паспорт (в записи не было сигнала шага) — только заголовок
             # Из какой записи цикл: 2026/10/28/A_….pla — так файл называет и «История» (для ссылок)
             rel = os.path.relpath(f, base).replace(os.sep, "/")
@@ -230,6 +232,7 @@ img {{ max-width: 100%; display: block; margin: 6px 0; }}
 <h2>Самые заметные изменения</h2>
 <p class="muted">Серые точки — циклы, линия — обычное значение смены, пунктир — тренд, жёлтая — порог.</p>
 {imgs or '<p class="muted">Заметных трендов нет.</p>'}
+{about("trend.py")}
 </body></html>"""
 
 

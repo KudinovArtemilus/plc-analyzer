@@ -3,12 +3,31 @@
 Формат (internal/archive/format.go):
   "PLCA" | uint32 длина JSON | JSON-заголовок | порции: [uint32 длина][uint32 CRC32][deflate]
 """
-import json, struct, zlib
+import html, json, os, struct, zlib
 from datetime import datetime
 import pandas as pd
 
 
 LOCAL = datetime.now().astimezone().tzinfo  # часовой пояс Windows
+
+
+def about(script):
+    """Подвал отчёта: чья программа, каким скриптом и когда сделан.
+
+    Из анализатора (ссылки в «Истории») подпись передаёт Go в PLCA_ABOUT — со сборкой,
+    как в подвале страниц. Запуск руками — без сборки, но с тем же автором."""
+    line = os.environ.get("PLCA_ABOUT") or "PLC Analyzer · © 2026 Артём Кудинов"
+    return (f'<footer style="margin-top:28px;padding-top:8px;border-top:1px solid #C9C6BD;'
+            f'font-size:11px;color:#5A6B7A">{html.escape(line)} · {script} · '
+            f'сформирован {datetime.now():%d.%m.%Y %H:%M}</footer>')
+
+
+def read_passport(path):
+    """Паспорт циклов (CSV) в DataFrame. Первая строка «# PLC Analyzer …» — подпись,
+    её пропускаем; у паспортов до подписи её нет — читаем с первой строки."""
+    with open(path, encoding="utf-8") as f:
+        skip = 1 if f.readline().startswith("#") else 0
+    return pd.read_csv(path, sep=";", decimal=",", skiprows=skip)
 
 
 def _uvarint(b, i):

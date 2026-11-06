@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/KudinovArtemilus/plc-analyzer/internal/about"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/archive"
 )
 
@@ -63,10 +64,12 @@ func (s *Server) historyCSV(w http.ResponseWriter, r *http.Request) {
 	bw := bufio.NewWriter(w)
 	defer bw.Flush()
 	bw.WriteString("\xEF\xBB\xBF") // метка UTF-8: Excel покажет русские буквы правильно
+	// Первая строка — чья выгрузка и когда; в Excel это ячейка A1 над таблицей
+	fmt.Fprintf(bw, "# %s · выгружено %s\r\n", about.Line(), time.Now().Format("02.01.2006 15:04"))
 
 	cw := csv.NewWriter(bw)
-	cw.Comma = ';'     // русский Excel ждёт точку с запятой
-	cw.UseCRLF = true  // переводы строк как в Windows
+	cw.Comma = ';'    // русский Excel ждёт точку с запятой
+	cw.UseCRLF = true // переводы строк как в Windows
 
 	head := []string{"Время"}
 	for _, ref := range refs {

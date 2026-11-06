@@ -104,6 +104,7 @@ func (s *Server) Handler() http.Handler {
 
 	// Live
 	mux.HandleFunc("GET /api/plcs", s.plcsJSON)
+	mux.HandleFunc("GET /api/about", s.aboutJSON) // подпись программы: имя, сборка, автор
 	mux.HandleFunc("GET /api/groups", s.groups)
 	mux.HandleFunc("GET /api/dicts", s.dictTextsJSON)
 	mux.HandleFunc("GET /api/stream", s.stream)

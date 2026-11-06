@@ -49,6 +49,9 @@ type Header struct {
 	Gen       int         `json:"gen"`        // номер конфигурации сигналов
 	Created   time.Time   `json:"created"`
 	Groups    []GroupInfo `json:"groups"`
+	// Producer — кем записан файл: «PLC Analyzer · сборка … · © 2026 Артём Кудинов».
+	// У старых файлов поля нет — читаются как раньше (пустая строка)
+	Producer string `json:"producer,omitempty"`
 }
 
 // Chunk — порция данных одной группы

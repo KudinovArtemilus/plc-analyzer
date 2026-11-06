@@ -15,7 +15,7 @@ import matplotlib
 matplotlib.use("Agg")  # без окна: рисуем сразу в картинку (служба окон не имеет)
 import matplotlib.pyplot as plt
 
-from pla import read_pla
+from pla import about, read_pla
 
 MAX_POINTS = 3000  # больше точек на графике глаз не различит, а картинка распухнет
 
@@ -111,6 +111,7 @@ img {{ max-width: 100%; background: #F2F1EC; }}
 <h1>{html.escape(title)}</h1>
 <p class="note">Файл {html.escape(os.path.basename(path))} · Python-исследование (33a)</p>
 {"".join(parts)}
+{about("explore.py")}
 </body></html>"""
 
 

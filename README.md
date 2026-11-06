@@ -226,6 +226,14 @@ go test ./...
 HTML-шаблоны (`internal/web/templates`) содержат действия Go `{{ … }}`: автоформатирование HTML
 может их испортить, поэтому в `.vscode/settings.json` оно отключено.
 
+Свойства exe (описание, автор, значок) — в `winres/winres.json`; после его правки пересоздайте
+`rsrc_windows_*.syso` (их берёт `go build`):
+
+```powershell
+go install github.com/tc-hib/go-winres@latest
+go-winres make
+```
+
 ## Планы
 
 - «Шаг висит дольше обычного» и «цикл дольше нормы» — предупреждения на лету, нормы — из паспорта
@@ -237,3 +245,8 @@ HTML-шаблоны (`internal/web/templates`) содержат действия
 ## Автор
 
 Артём Кудинов — инженер АСУП. [github.com/KudinovArtemilus](https://github.com/KudinovArtemilus)
+
+Всё, что выдаёт программа, подписано: подвал каждой страницы, картинки PNG и CSV из «Истории»,
+паспорта циклов, отчёты Python, заголовок файлов записи `.pla`, лог при запуске и свойства exe —
+«PLC Analyzer · сборка <коммит> от <дата> · © 2026 Артём Кудинов». Имя, автор и год задаются
+в одном месте — `internal/about`; сборку (коммит git) `go build` вшивает в exe сам.
