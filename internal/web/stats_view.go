@@ -88,7 +88,7 @@ func statRowFor(name, unit string, isBit bool, times []int64, vals []float64, fr
 // historyStats — GET /ui/history/stats?plc=…&file=…&s=…&from=…&to=… (мс)
 func (s *Server) historyStats(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	f, err := s.openFile(r, q.Get("file"))
+	f, err := s.openFor(r, q.Get("file"), q["s"]) // те же сигналы, что на графике
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

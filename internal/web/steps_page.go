@@ -122,7 +122,14 @@ func (s *Server) stepsPage(w http.ResponseWriter, r *http.Request) {
 	mode, mv := q.Get("mode"), q.Get("mv")
 	v.Mode, v.ModeVal = mode, mv
 
-	f, err := s.openFile(r, v.File)
+	// Нужны только сигнал шага и сигнал режима; список сигналов для выбора — из заголовка
+	var need []string
+	for _, n := range []string{v.Sig, mode} {
+		if n != "" {
+			need = append(need, n)
+		}
+	}
+	f, err := s.openSignals(r, v.File, need)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

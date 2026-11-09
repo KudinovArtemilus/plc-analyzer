@@ -146,7 +146,8 @@ type sigJSON struct {
 
 func (s *Server) historyMeta(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	f, err := s.openFile(r, q.Get("file"))
+	// Заголовок просмотра: имена, единицы и время записи — значения не нужны
+	f, err := s.openSignals(r, q.Get("file"), nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -175,7 +176,7 @@ func (s *Server) historyMeta(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) historyData(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	f, err := s.openFile(r, q.Get("file"))
+	f, err := s.openFor(r, q.Get("file"), q["s"]) // в памяти — только сигналы на графике
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -231,6 +232,16 @@ func (s *Server) openFile(r *http.Request, rel string) (*archive.File, error) {
 		return nil, fmt.Errorf("файл не открывается: %w", err)
 	}
 	return f, nil
+}
+
+// openFor — файл для запроса с ?s=…: только перечисленные сигналы. Пустой список по старому
+// правилу значит «все сигналы файла» — тогда и открываем файл целиком: открыть без значений
+// и показать «все» нельзя, у незагруженных сигналов значений просто нет (Values == nil).
+func (s *Server) openFor(r *http.Request, rel string, names []string) (*archive.File, error) {
+	if len(names) == 0 {
+		return s.openFile(r, rel)
+	}
+	return s.openSignals(r, rel, names)
 }
 
 // openSignals — файл только с этими сигналами (и временами всех групп): памяти — по числу

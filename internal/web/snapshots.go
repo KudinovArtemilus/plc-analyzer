@@ -54,7 +54,7 @@ func (s *Server) createSnapshot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, friendly(err).Error(), http.StatusInternalServerError)
 		return
 	}
-	src, err := s.openFile(r, req.File)
+	src, err := s.openSignals(r, req.File, req.Signals) // в слепок идут только они
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

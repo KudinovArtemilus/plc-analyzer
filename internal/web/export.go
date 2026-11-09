@@ -19,7 +19,7 @@ import (
 // historyCSV отдаёт все точки выбранных сигналов за промежуток [from, to] в CSV под русский Excel
 func (s *Server) historyCSV(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	f, err := s.openFile(r, q.Get("file"))
+	f, err := s.openFor(r, q.Get("file"), q["s"]) // выгружаем выбранные — их и читаем
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
