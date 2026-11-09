@@ -52,14 +52,51 @@
 
   <script src="/htmx.min.js"></script>
   <script>
-    // pickSet — отметить галочки: names — список имён (набор), null — все.
+    // pickSet — отметить галочки: names — список имён (набор), null — все, [] — ни одного.
     // id набора уходит на страницу просмотра: там у набора свой порядок дорожек.
     // Сигналы набора, которых нет в этой записи (добавлены позже), просто не отметятся.
+    // «все» и «ни одного» при поиске — только для найденных: нашли «давл» → «все» добавит
+    // их к уже отмеченным, остальное не тронет. Набор отмечается целиком, без оглядки на поиск.
     function pickSet(form, names, id) {
       const want = names && new Set(names);
-      form.querySelectorAll("[name=s]").forEach(c => { c.checked = !want || want.has(c.value); });
+      form.querySelectorAll("[name=s]").forEach(c => {
+        if (names && names.length) c.checked = want.has(c.value);   // набор
+        else if (!c.closest("label").hidden) c.checked = !names;    // все / ни одного — видимые
+      });
       form.set.value = id;
+      pickCount(form);
     }
+
+    // norm — для поиска: без регистра, «ё» = «е», лишние пробелы не мешают
+    const norm = s => s.toLowerCase().replaceAll("ё", "е");
+
+    // pickFind — оставить сигналы, в имени или адресе которых есть ВСЕ слова поиска:
+    // «y12 давл» найдёт «Y12 Прижим.Давление». Отмеченное, но скрытое поиском остаётся отмеченным.
+    function pickFind(form) {
+      const words = norm(form.querySelector(".pick-find input").value).split(/\s+/).filter(Boolean);
+      let shown = 0;
+      form.querySelectorAll("[name=s]").forEach(c => {
+        const label = c.closest("label");
+        label.hidden = !words.every(w => norm(label.textContent).includes(w));
+        if (!label.hidden) shown++;
+      });
+      form.querySelector(".pick-none").hidden = shown > 0;
+      pickCount(form);
+    }
+
+    // pickCount — «отмечено 5 из 114» (и сколько найдено, если идёт поиск)
+    function pickCount(form) {
+      const all = form.querySelectorAll("[name=s]");
+      const checked = [...all].filter(c => c.checked).length;
+      const shown = [...all].filter(c => !c.closest("label").hidden).length;
+      form.querySelector(".pick-count").textContent =
+        `отмечено ${checked} из ${all.length}` + (shown < all.length ? ` · найдено ${shown}` : "");
+    }
+    // Форма выбора приходит через HTMX — счётчик заполняем, как только она появилась
+    document.body.addEventListener("htmx:afterSwap", e => {
+      const f = e.target.querySelector("form.pick");
+      if (f) pickCount(f);
+    });
   </script>
   {{template "about"}}
 </body>
@@ -81,11 +118,17 @@
   </div>
   {{end}}
   <input type="hidden" name="set" value="">
-  <div>
+  <div class="pick-find">
+    <input type="search" placeholder="поиск: имя или адрес, например «давл» или «DBX12»" autofocus
+      oninput="pickFind(this.form)" onkeydown="if (event.key === 'Enter') event.preventDefault()">
+    <span class="pick-count muted"></span>
+  </div>
+  <div onchange="pickCount(this.closest('form'))">
     {{range .Signals}}
     <label><input type="checkbox" name="s" value="{{.Name}}"> {{.Name}} <small>{{.Info}}</small></label>
     {{end}}
   </div>
+  <p class="pick-none muted" hidden>Ничего не найдено.</p>
   <button type="button" onclick="pickSet(this.form, null, '')">все</button>
   <button type="button" onclick="pickSet(this.form, [], '')">ни одного</button>
   <button>Показать выбранные</button>

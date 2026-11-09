@@ -120,6 +120,9 @@ func (s *Server) historyPick(w http.ResponseWriter, r *http.Request) {
 		if ref.Unit != "" {
 			info = ref.Unit + " · " + info
 		}
+		if ref.Addr != "" { // у очень старых записей адреса в заголовке нет
+			info = ref.Addr + " · " + info
+		}
 		sigs = append(sigs, sigView{Name: ref.Name, Info: info})
 	}
 	from, to, _ := fileRange(f)
@@ -231,6 +234,7 @@ func (s *Server) openFile(r *http.Request, rel string) (*archive.File, error) {
 // sigRef — где лежит сигнал внутри файла
 type sigRef struct {
 	Name     string
+	Addr     string // адрес в ПЛК — показываем в выборе сигналов, по нему тоже ищут
 	Unit     string
 	PeriodMs int64
 	g, i     int // группа и номер сигнала в ней
@@ -246,7 +250,7 @@ func pickSignals(f *archive.File, names []string) []sigRef {
 	for gi, g := range f.Header.Groups {
 		for si, sg := range g.Signals {
 			if len(names) == 0 || want[sg.Name] {
-				out = append(out, sigRef{Name: sg.Name, Unit: sg.Unit, PeriodMs: g.PeriodMs, g: gi, i: si})
+				out = append(out, sigRef{Name: sg.Name, Addr: sg.Addr, Unit: sg.Unit, PeriodMs: g.PeriodMs, g: gi, i: si})
 			}
 		}
 	}

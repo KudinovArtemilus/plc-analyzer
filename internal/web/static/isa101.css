@@ -213,6 +213,27 @@ tr.editing td {
   margin: 2px 8px 2px 0;
 }
 
+/* label[hidden]: у label свой display — без этого правила hidden его не прячет */
+.pick label[hidden] {
+  display: none;
+}
+
+/* Поиск сигналов в «Истории» */
+.pick-find {
+  margin: 6px 0;
+}
+
+.pick-find input {
+  width: 100%;
+  max-width: 420px;
+  box-sizing: border-box;
+  padding: 5px 8px;
+}
+
+.pick-count {
+  margin-left: 10px;
+}
+
 .note {
   padding: 5px 10px;
   margin: 6px 0;
