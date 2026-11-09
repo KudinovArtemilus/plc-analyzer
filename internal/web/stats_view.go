@@ -32,6 +32,7 @@ type statRow struct {
 	LongestAt  string
 	LongestCut bool
 	Gaps       bool // данные есть не на всём участке — был разрыв связи
+	Bad        int  // «не число» (NaN) — сколько раз; обычно не тот адрес или тип сигнала
 }
 
 type statsView struct {
@@ -74,6 +75,7 @@ func statRowFor(name, unit string, isBit bool, times []int64, vals []float64, fr
 
 	a := stats.Analyze(times, vals, from, to)
 	row.Empty = a.N == 0
+	row.Bad = a.Bad
 	if !row.Empty {
 		row.Min, row.MinAt = fmtNum(a.Min, 3), fmtStatTime(a.MinAt)
 		row.Max, row.MaxAt = fmtNum(a.Max, 3), fmtStatTime(a.MaxAt)

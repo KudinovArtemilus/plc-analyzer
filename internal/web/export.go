@@ -117,8 +117,11 @@ func (s *Server) historyCSV(w http.ResponseWriter, r *http.Request) {
 	cw.Flush()
 }
 
-// csvNum: 85.3 → "85,3" (запятая — для русского Excel)
+// csvNum: 85.3 → "85,3" (запятая — для русского Excel); «не число» — пустая ячейка
 func csvNum(v float64) string {
+	if !archive.Finite(v) {
+		return ""
+	}
 	return strings.Replace(strconv.FormatFloat(v, 'f', -1, 64), ".", ",", 1)
 }
 

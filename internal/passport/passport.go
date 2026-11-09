@@ -172,13 +172,25 @@ func ons(v []float64, lo, hi int) int {
 	return n
 }
 
+// agg — мин/макс/среднее за цикл. «Не числа» (NaN) пропускаем: одна такая точка
+// превратила бы среднее цикла в NaN, а тренды и аномалии считаются по этим средним.
+// В цикле одни «не числа» — как будто точек нет: пустая ячейка паспорта.
 func agg(v []float64) Agg {
-	a := Agg{Min: v[0], Max: v[0], OK: true}
-	sum := 0.0
+	var a Agg
+	sum, n := 0.0, 0
 	for _, x := range v {
+		if !archive.Finite(x) {
+			continue
+		}
+		if n == 0 {
+			a.Min, a.Max = x, x
+		}
 		a.Min, a.Max = min(a.Min, x), max(a.Max, x)
 		sum += x
+		n++
 	}
-	a.Mean = sum / float64(len(v))
+	if n > 0 {
+		a.Mean, a.OK = sum/float64(n), true
+	}
 	return a
 }

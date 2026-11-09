@@ -5,11 +5,15 @@
 // на выход — числа. Поэтому его легко проверить тестами.
 package stats
 
-import "sort"
+import (
+	"math"
+	"sort"
+)
 
 // Analog — сводка по аналоговому сигналу (INT, REAL…) на участке
 type Analog struct {
-	N              int     // сколько точек попало в участок; 0 — данных нет
+	N              int     // сколько обычных чисел попало в участок; 0 — данных нет
+	Bad            int     // сколько «не чисел» (NaN, бесконечность) — в мин/макс/среднее не входят
 	Min, Max, Mean float64 // Mean — среднее по точкам
 	MinAt, MaxAt   int64   // когда был минимум и максимум (мс Unix), первый раз
 }
@@ -41,14 +45,19 @@ func span(t []int64, from, to int64) (lo, hi int) {
 func Analyze(t []int64, v []float64, from, to int64) Analog {
 	lo, hi := span(t, from, to)
 	var a Analog
-	if lo >= hi {
-		return a
-	}
 	sum := 0.0
-	a.Min, a.Max = v[lo], v[lo]
-	a.MinAt, a.MaxAt = t[lo], t[lo]
 	for i := lo; i < hi; i++ {
 		x := v[i]
+		// NaN испортил бы всё: NaN + 5 = NaN, а сравнение с NaN всегда ложно.
+		// Поэтому «не числа» только считаем — их количество покажем отдельно.
+		if math.IsNaN(x) || math.IsInf(x, 0) {
+			a.Bad++
+			continue
+		}
+		if a.N == 0 {
+			a.Min, a.Max, a.MinAt, a.MaxAt = x, x, t[i], t[i]
+		}
+		a.N++
 		sum += x
 		if x < a.Min { // строгое «<»: при равных значениях запоминаем ПЕРВЫЙ раз
 			a.Min, a.MinAt = x, t[i]
@@ -57,8 +66,9 @@ func Analyze(t []int64, v []float64, from, to int64) Analog {
 			a.Max, a.MaxAt = x, t[i]
 		}
 	}
-	a.N = hi - lo
-	a.Mean = sum / float64(a.N)
+	if a.N > 0 {
+		a.Mean = sum / float64(a.N)
+	}
 	return a
 }
 

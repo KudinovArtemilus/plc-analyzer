@@ -20,8 +20,9 @@
     <tbody>
         {{range .Analog}}
         <tr>
-            <td>{{.Name}}{{if .Unit}}, <small>{{.Unit}}</small>{{end}}</td>
-            {{if .Empty}}<td colspan="6" class="muted">нет точек на участке</td>{{else}}
+            <td>{{.Name}}{{if .Unit}}, <small>{{.Unit}}</small>{{end}}
+                {{if .Bad}}<br><small class="warn" title="NaN: ПЛК прислал «не число» — проверьте адрес и тип сигнала или расчёт в ПЛК (деление на 0)">▲ не число: {{.Bad}} раз</small>{{end}}</td>
+            {{if .Empty}}<td colspan="6" class="muted">{{if .Bad}}нет числовых точек на участке{{else}}нет точек на участке{{end}}</td>{{else}}
             <td class="num">{{.Min}}</td>
             <td class="mono muted">{{.MinAt}}</td>
             <td class="num">{{.Max}}</td>

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -303,8 +304,16 @@ func fmtPeriodMs(ms int64) string {
 	return strconv.FormatInt(ms, 10) + " мс"
 }
 
+// writeJSON — ответ в JSON. Не получилось (например, NaN где-то, где его не ждали) —
+// ошибка в лог и в ответ, а не пустой ответ без объяснений, как было до шага 44.
 func writeJSON(w http.ResponseWriter, v any) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		log.Printf("ответ JSON не собран: %v", err)
+		http.Error(w, "данные не удалось отдать: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(v)
+	w.Write(append(b, '\n'))
 }
 func timeFromMs(ms int64) time.Time { return time.UnixMilli(ms) }

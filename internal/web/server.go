@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
+	"log"
 	"net/http"
 	"os/exec"
 	"strconv"
@@ -335,7 +336,8 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 				last[gi] = pts[len(pts)-1].T
 
 				data, err := json.Marshal(streamMsg{G: gi, Pts: pts})
-				if err != nil {
+				if err != nil { // раньше — молча; NaN сюда больше не доходит (buffer.Point.MarshalJSON)
+					log.Printf("Live: данные не собраны в JSON: %v", err)
 					return
 				}
 				fmt.Fprintf(w, "id: %s\ndata: %s\n\n", eventID(c.Gen, last), data)

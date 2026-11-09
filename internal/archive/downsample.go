@@ -1,8 +1,19 @@
 package archive
 
-import "sort"
+import (
+	"math"
+	"sort"
+)
 
-// Series — точки одного сигнала для графика. nil в V — разрыв линии.
+// Finite — обычное число, не NaN и не бесконечность. REAL из ПЛК бывает NaN («не число»:
+// 0/0 в SCL, корень из минуса, не тот адрес или тип), а JSON NaN передать не умеет —
+// поэтому для графика, статистики и CSV такие точки — «нет значения», как разрыв связи.
+// В файле .pla они остаются как есть: это правда о том, что пришло из ПЛК.
+func Finite(x float64) bool {
+	return !math.IsNaN(x) && !math.IsInf(x, 0)
+}
+
+// Series — точки одного сигнала для графика. nil в V — разрыв линии (нет связи или «не число»).
 type Series struct {
 	T []int64    `json:"t"`
 	V []*float64 `json:"v"`
@@ -18,8 +29,12 @@ func Downsample(t []int64, v []float64, from, to int64, buckets int, gapMs int64
 
 	var out Series
 	add := func(ti int64, vi float64) {
-		x := vi // своя переменная на каждую точку: указатели не должны смотреть в одно место
 		out.T = append(out.T, ti)
+		if !Finite(vi) {
+			out.V = append(out.V, nil) // «не число» — разрыв линии в этой точке
+			return
+		}
+		x := vi // своя переменная на каждую точку: указатели не должны смотреть в одно место
 		out.V = append(out.V, &x)
 	}
 	gap := func(after int64) {
@@ -46,23 +61,33 @@ func Downsample(t []int64, v []float64, from, to int64, buckets int, gapMs int64
 		}
 		end := from + int64(float64(b+1)*width)
 
-		// Собираем точки отрезка; разрыв внутри — останавливаемся на нём
-		mi, ma, j := i, i, i+1
-		for j < len(t) && t[j] < end && t[j]-t[j-1] <= gapMs {
-			if v[j] < v[mi] {
-				mi = j
-			}
-			if v[j] > v[ma] {
-				ma = j
+		// Собираем точки отрезка; разрыв внутри — останавливаемся на нём.
+		// Минимум и максимум — только среди обычных чисел: с NaN любое сравнение ложно,
+		// и одна такая точка в начале отрезка «спрятала» бы настоящий пик.
+		mi, ma, j := -1, -1, i
+		// Первую точку отрезка (j == i) берём всегда — иначе на последней точке записи,
+		// где t == to == end, цикл не сдвинулся бы с места
+		for j < len(t) && (j == i || t[j] < end && t[j]-t[j-1] <= gapMs) {
+			if Finite(v[j]) {
+				if mi < 0 || v[j] < v[mi] {
+					mi = j
+				}
+				if ma < 0 || v[j] > v[ma] {
+					ma = j
+				}
 			}
 			j++
 		}
 
-		// Минимум и максимум — в том порядке, в каком они были по времени
-		first, second := min(mi, ma), max(mi, ma)
-		add(t[first], v[first])
-		if second != first {
-			add(t[second], v[second])
+		if mi < 0 { // в отрезке одни «не числа» — разрыв
+			add(t[i], math.NaN())
+		} else {
+			// Минимум и максимум — в том порядке, в каком они были по времени
+			first, second := min(mi, ma), max(mi, ma)
+			add(t[first], v[first])
+			if second != first {
+				add(t[second], v[second])
+			}
 		}
 
 		if j < len(t) && t[j]-t[j-1] > gapMs {
