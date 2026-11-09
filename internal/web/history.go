@@ -109,7 +109,8 @@ type sigView struct {
 
 func (s *Server) historyPick(w http.ResponseWriter, r *http.Request) {
 	rel := r.URL.Query().Get("file")
-	f, err := s.openFile(r, rel)
+	// Для выбора хватит имён из заголовка и времени записи — значения не нужны вовсе
+	f, err := s.openSignals(r, rel, nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -225,6 +226,20 @@ func (s *Server) openFile(r *http.Request, rel string) (*archive.File, error) {
 		return nil, err
 	}
 	f, err := s.Cache.Get(path)
+	if err != nil {
+		return nil, fmt.Errorf("файл не открывается: %w", err)
+	}
+	return f, nil
+}
+
+// openSignals — файл только с этими сигналами (и временами всех групп): памяти — по числу
+// выбранных сигналов, а не всех в файле. nil — без значений, только заголовок и времена.
+func (s *Server) openSignals(r *http.Request, rel string, names []string) (*archive.File, error) {
+	path, err := s.resolve(r, rel)
+	if err != nil {
+		return nil, err
+	}
+	f, err := s.Cache.GetSignals(path, names)
 	if err != nil {
 		return nil, fmt.Errorf("файл не открывается: %w", err)
 	}

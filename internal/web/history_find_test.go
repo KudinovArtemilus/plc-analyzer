@@ -39,7 +39,8 @@ func TestHistoryPickFind(t *testing.T) {
 	w.WriteChunk(archive.Chunk{Group: 0, Times: []int64{1000, 1100}, Values: [][]float64{{1, 2}, {0, 1}}})
 	w.Close()
 
-	h := (&Server{Store: st, PLC: pl, DataRoot: root, Cache: archive.NewCache(2)}).Handler()
+	cache := archive.NewCache(2)
+	h := (&Server{Store: st, PLC: pl, DataRoot: root, Cache: cache}).Handler()
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", fmt.Sprintf("/ui/history/pick?plc=%d&file=%s", id, rel), nil))
 	page := rec.Body.String()
@@ -51,6 +52,12 @@ func TestHistoryPickFind(t *testing.T) {
 			t.Errorf("выбор сигналов: нет %q", want)
 		}
 	}
+	// Выбор сигналов не загружает значения (шаг 43): в кеше — файл без единого сигнала.
+	// Если бы выбор открыл файл целиком, кеш вернул бы полную копию со всеми значениями.
+	if f, err := cache.GetSignals(path, nil); err != nil || f.Has(0, 0) || f.Has(0, 1) {
+		t.Errorf("выбор сигналов загрузил значения: %v", err)
+	}
+
 	// Функции поиска — на самой странице «История»
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", fmt.Sprintf("/history?plc=%d", id), nil))
