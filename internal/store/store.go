@@ -24,10 +24,32 @@ type PLC struct {
 	Rack int
 	Slot int
 	PDU  int // размер пакета S7, байт: 240 (S7-300/1200) или 480 (S7-400/1500) — от него размер запроса
+
+	AreaID int64  // участок (areas.go); 0 — без участка
+	Area   string // его название — только для показа, из запроса с JOIN; сохраняется AreaID
 }
 
 // DefaultPDU — PDU, если не указан: подходит любому ПЛК
 const DefaultPDU = 240
+
+// plcCols — столбцы ПЛК для запросов с JOIN участка (p — plcs, a — areas)
+const plcCols = `p.id, p.name, p.ip, p.rack, p.slot, p.pdu, COALESCE(p.area_id, 0), COALESCE(a.name, '')`
+
+// areaName — название участка для журнала; 0 или не найден — пусто
+func (s *Store) areaName(ctx context.Context, id int64) string {
+	var n string
+	if id != 0 {
+		s.db.QueryRowContext(ctx, `SELECT name FROM areas WHERE id = ?`, id).Scan(&n)
+	}
+	return n
+}
+
+func orNone(name string) string {
+	if name == "" {
+		return "без участка"
+	}
+	return name
+}
 
 // Типы сигналов
 const (
@@ -151,6 +173,9 @@ var migrations = []string{
 	// 11: размер PDU у ПЛК — от него зависит, сколько байт читается одним запросом.
 	//     У старых ПЛК — 240: так анализатор работал до этой версии.
 	`ALTER TABLE plcs ADD COLUMN pdu INTEGER NOT NULL DEFAULT 240;`,
+
+	// 12: участки — группы ПЛК (areas.go); у ПЛК — area_id
+	areasSchema,
 }
 
 func Open(path string) (*Store, error) {
@@ -215,7 +240,7 @@ func (s *Store) Close() error {
 
 func (s *Store) PLCs(ctx context.Context) ([]PLC, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, name, ip, rack, slot, pdu FROM plcs ORDER BY id`)
+		`SELECT `+plcCols+` FROM plcs p LEFT JOIN areas a ON a.id = p.area_id ORDER BY p.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +249,7 @@ func (s *Store) PLCs(ctx context.Context) ([]PLC, error) {
 	var out []PLC
 	for rows.Next() {
 		var p PLC
-		if err := rows.Scan(&p.ID, &p.Name, &p.IP, &p.Rack, &p.Slot, &p.PDU); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.IP, &p.Rack, &p.Slot, &p.PDU, &p.AreaID, &p.Area); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -235,8 +260,8 @@ func (s *Store) PLCs(ctx context.Context) ([]PLC, error) {
 func (s *Store) PLC(ctx context.Context, id int64) (PLC, error) {
 	var p PLC
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, name, ip, rack, slot, pdu FROM plcs WHERE id = ?`, id).
-		Scan(&p.ID, &p.Name, &p.IP, &p.Rack, &p.Slot, &p.PDU)
+		`SELECT `+plcCols+` FROM plcs p LEFT JOIN areas a ON a.id = p.area_id WHERE p.id = ?`, id).
+		Scan(&p.ID, &p.Name, &p.IP, &p.Rack, &p.Slot, &p.PDU, &p.AreaID, &p.Area)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, ErrNotFound
 	}
@@ -298,17 +323,20 @@ func (s *Store) AddPLC(ctx context.Context, who string, p PLC) (int64, error) {
 	p.PDU = cmp.Or(p.PDU, DefaultPDU) // не указан — 240
 	return s.change(ctx, who, "добавлен ПЛК",
 		fmt.Sprintf("%s (%s, слот %d, PDU %d)", p.Name, p.IP, p.Slot, p.PDU),
-		`INSERT INTO plcs (name, ip, rack, slot, pdu) VALUES (?, ?, ?, ?, ?)`,
-		p.Name, p.IP, p.Rack, p.Slot, p.PDU)
+		`INSERT INTO plcs (name, ip, rack, slot, pdu, area_id) VALUES (?, ?, ?, ?, ?, ?)`,
+		p.Name, p.IP, p.Rack, p.Slot, p.PDU, areaRef(p.AreaID))
 }
 
 func (s *Store) UpdatePLC(ctx context.Context, who string, old, p PLC) error {
 	p.PDU = cmp.Or(p.PDU, DefaultPDU)
-	_, err := s.change(ctx, who, "изменён ПЛК",
-		fmt.Sprintf("%s (%s, rack %d, slot %d, PDU %d) → %s (%s, rack %d, slot %d, PDU %d)",
-			old.Name, old.IP, old.Rack, old.Slot, old.PDU, p.Name, p.IP, p.Rack, p.Slot, p.PDU),
-		`UPDATE plcs SET name = ?, ip = ?, rack = ?, slot = ?, pdu = ? WHERE id = ?`,
-		p.Name, p.IP, p.Rack, p.Slot, p.PDU, p.ID)
+	details := fmt.Sprintf("%s (%s, rack %d, slot %d, PDU %d) → %s (%s, rack %d, slot %d, PDU %d)",
+		old.Name, old.IP, old.Rack, old.Slot, old.PDU, p.Name, p.IP, p.Rack, p.Slot, p.PDU)
+	if p.AreaID != old.AreaID { // участок — названием, а не номером: журнал читают люди
+		details += fmt.Sprintf("; участок: %s → %s", orNone(old.Area), orNone(s.areaName(ctx, p.AreaID)))
+	}
+	_, err := s.change(ctx, who, "изменён ПЛК", details,
+		`UPDATE plcs SET name = ?, ip = ?, rack = ?, slot = ?, pdu = ?, area_id = ? WHERE id = ?`,
+		p.Name, p.IP, p.Rack, p.Slot, p.PDU, areaRef(p.AreaID), p.ID)
 	return err
 }
 

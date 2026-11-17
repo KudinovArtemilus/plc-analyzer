@@ -189,6 +189,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /ui/plcs/{id}", s.updatePLC)
 	mux.HandleFunc("DELETE /ui/plcs/{id}", s.deletePLC)
 	mux.HandleFunc("GET /ui/plcs/{id}/state", s.plcState)
+	mux.HandleFunc("GET /ui/areas", s.areasBlock) // участки — группы ПЛК (areas.go)
+	mux.HandleFunc("POST /ui/areas", s.addArea)
+	mux.HandleFunc("PUT /ui/areas/{id}", s.renameArea)
+	mux.HandleFunc("POST /ui/areas/{id}/move", s.moveArea)
+	mux.HandleFunc("DELETE /ui/areas/{id}", s.deleteArea)
 
 	mux.HandleFunc("GET /login", s.loginPage) // вход по паролю для просмотра с других ПК (37)
 	mux.HandleFunc("POST /login", s.login)

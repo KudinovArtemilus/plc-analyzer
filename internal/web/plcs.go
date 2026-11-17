@@ -16,8 +16,9 @@ import (
 )
 
 type plcFormView struct {
-	PLC store.PLC
-	Err string
+	PLC   store.PLC
+	Err   string
+	Areas []store.Area // для выбора участка в форме
 }
 
 // ---------- Страница ----------
@@ -28,9 +29,15 @@ func (s *Server) plcsPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	areas, err := s.Store.Areas(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	render(w, "plcs", map[string]any{
-		"PLCs": list,
-		"Form": plcFormView{PLC: store.PLC{Rack: 0, Slot: 2, PDU: store.DefaultPDU}},
+		"PLCs":  list,
+		"Areas": areaBlock{Areas: areas},
+		"Form":  plcFormView{PLC: store.PLC{Rack: 0, Slot: 2, PDU: store.DefaultPDU}, Areas: areas},
 	})
 }
 
@@ -46,7 +53,7 @@ func (s *Server) addPLC(w http.ResponseWriter, r *http.Request) {
 		err = friendly(err)
 	}
 	if err != nil {
-		render(w, "plcaddform", plcFormView{PLC: p, Err: err.Error()})
+		render(w, "plcaddform", plcFormView{PLC: p, Err: err.Error(), Areas: s.areas(r)})
 		return
 	}
 	w.Header().Set("HX-Refresh", "true")
@@ -62,7 +69,7 @@ func (s *Server) plcRow(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) plcEditRow(w http.ResponseWriter, r *http.Request) {
 	if p, ok := s.plcFromPath(w, r); ok {
-		render(w, "plceditrow", plcFormView{PLC: p})
+		render(w, "plceditrow", plcFormView{PLC: p, Areas: s.areas(r)})
 	}
 }
 
@@ -73,6 +80,9 @@ func (s *Server) updatePLC(w http.ResponseWriter, r *http.Request) {
 	}
 	p, err := plcFromForm(r)
 	p.ID = old.ID
+	if p.AreaID == old.AreaID {
+		p.Area = old.Area // название участка из формы не приходит — иначе p != old всегда
+	}
 
 	connChanged := p.IP != old.IP || p.Rack != old.Rack || p.Slot != old.Slot
 	if err == nil {
@@ -85,8 +95,11 @@ func (s *Server) updatePLC(w http.ResponseWriter, r *http.Request) {
 		err = friendly(s.Store.UpdatePLC(r.Context(), who(r), old, p))
 	}
 	if err != nil {
-		render(w, "plceditrow", plcFormView{PLC: p, Err: err.Error()})
+		render(w, "plceditrow", plcFormView{PLC: p, Err: err.Error(), Areas: s.areas(r)})
 		return
+	}
+	if fresh, err := s.Store.PLC(r.Context(), p.ID); err == nil {
+		p = fresh // из базы — с названием участка
 	}
 	render(w, "plcrow", p)
 }
@@ -156,6 +169,8 @@ func plcFromForm(r *http.Request) (store.PLC, error) {
 	var errRack, errSlot error
 	p.Rack, errRack = strconv.Atoi(strings.TrimSpace(f.Get("rack")))
 	p.Slot, errSlot = strconv.Atoi(strings.TrimSpace(f.Get("slot")))
+	// Участок: поля нет или «—» — без участка; есть ли такой участок, проверит база (внешний ключ)
+	p.AreaID, _ = strconv.ParseInt(f.Get("area"), 10, 64)
 	// PDU: поля нет (старая форма) — 240, как раньше
 	p.PDU = store.DefaultPDU
 	pduErr := false

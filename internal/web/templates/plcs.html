@@ -17,6 +17,8 @@
     его строке. Удалённый ПЛК перестаёт опрашиваться, его настройки и журналы удаляются из базы,
     а файлы записей на диске остаются.</div>
 
+  {{template "areas" .Areas}}
+
   {{template "plcaddform" .Form}}
 
   <table>
@@ -27,6 +29,7 @@
         <th>rack</th>
         <th>slot</th>
         <th title="размер пакета S7: от него — сколько байт читается одним запросом">PDU</th>
+        <th>Участок</th>
         <th>Состояние</th>
         <th></th>
       </tr>
@@ -52,6 +55,7 @@
   rack <input name="rack" value="{{.PLC.Rack}}" size="2">
   slot <input name="slot" value="{{.PLC.Slot}}" size="2">
   PDU {{template "pdusel" .PLC.PDU}}
+  {{if .Areas}}участок {{template "areasel" .}}{{end}}
   <button>Добавить</button>
   <small>S7-300: slot 2, PDU 240 · S7-1200: slot 1, PDU 240 · S7-1500: slot 1, PDU 480</small>
   {{if .Err}}<span class="err">{{.Err}}</span>{{end}}
@@ -65,6 +69,7 @@
   <td>{{.Rack}}</td>
   <td>{{.Slot}}</td>
   <td>{{.PDU}}</td>
+  <td>{{if .Area}}{{.Area}}{{else}}<span class="muted">—</span>{{end}}</td>
   <td hx-get="/ui/plcs/{{.ID}}/state" hx-trigger="load, every 2s">…</td>
   <td>
     <a href="/?plc={{.ID}}">графики</a>
@@ -83,7 +88,7 @@
 {{/* Удалить не вышло — строка с причиной и кнопкой вернуть обычный вид */}}
 <tr id="plc-{{.PLC.ID}}">
   <td><b>{{.PLC.Name}}</b></td>
-  <td colspan="5"><span class="err">Не удалён: {{.Err}}</span></td>
+  <td colspan="6"><span class="err">Не удалён: {{.Err}}</span></td>
   <td><button hx-get="/ui/plcs/{{.PLC.ID}}" hx-target="closest tr" hx-swap="outerHTML">OK</button></td>
 </tr>
 {{end}}
@@ -96,6 +101,7 @@
   <td><input name="rack" value="{{.PLC.Rack}}" size="2"></td>
   <td><input name="slot" value="{{.PLC.Slot}}" size="2"></td>
   <td>{{template "pdusel" .PLC.PDU}}</td>
+  <td>{{template "areasel" .}}</td>
   <td>{{if .Err}}<span class="err">{{.Err}}</span>{{end}}</td>
   <td>
     <button hx-put="/ui/plcs/{{.PLC.ID}}" hx-include="closest tr" hx-target="closest tr"
@@ -103,6 +109,57 @@
     <button hx-get="/ui/plcs/{{.PLC.ID}}" hx-target="closest tr" hx-swap="outerHTML">отмена</button>
   </td>
 </tr>
+{{end}}
+
+
+{{define "areasel"}}
+{{/* Участок ПЛК: «—» — без участка. Данные — plcFormView: .PLC.AreaID и список .Areas */}}
+{{$cur := .PLC.AreaID}}
+<select name="area" aria-label="Участок">
+  <option value="0">—</option>
+  {{range .Areas}}<option value="{{.ID}}" {{if eq .ID $cur}}selected{{end}}>{{.Name}}</option>{{end}}
+</select>
+{{end}}
+
+
+{{define "areas"}}
+{{/* Участки — группы ПЛК (по ним — Telegram-табло, потом меню и итоги смены).
+     Удачное действие перерисовывает страницу, неудачное — только этот блок с причиной. */}}
+<div id="areas" class="panel-form">
+  <b>Участки</b>
+  <small class="muted">— группы ПЛК. Один ПЛК — в одном участке; участок у ПЛК — кнопка «изменить» в его строке.</small>
+  <table>
+    {{range $i, $a := .Areas}}
+    <tr>
+      {{if eq $a.ID $.Edit}}
+      <td><input name="name" value="{{$a.Name}}" size="24" aria-label="Новое название участка" autofocus></td>
+      <td class="muted">{{$a.PLCs}} ПЛК</td>
+      <td>
+        <button hx-put="/ui/areas/{{$a.ID}}" hx-include="closest tr" hx-target="#areas" hx-swap="outerHTML">сохранить</button>
+        <button hx-get="/ui/areas" hx-target="#areas" hx-swap="outerHTML">отмена</button>
+      </td>
+      {{else}}
+      <td><b>{{$a.Name}}</b></td>
+      <td class="muted">{{$a.PLCs}} ПЛК</td>
+      <td>
+        <button class="edit" hx-get="/ui/areas?edit={{$a.ID}}" hx-target="#areas" hx-swap="outerHTML">переименовать</button>
+        <button hx-post="/ui/areas/{{$a.ID}}/move?d=-1" hx-target="#areas" hx-swap="outerHTML" aria-label="Выше">▲</button>
+        <button hx-post="/ui/areas/{{$a.ID}}/move?d=1" hx-target="#areas" hx-swap="outerHTML" aria-label="Ниже">▼</button>
+        <button hx-delete="/ui/areas/{{$a.ID}}" hx-target="#areas" hx-swap="outerHTML"
+          hx-confirm="Удалить участок «{{$a.Name}}»?{{if $a.PLCs}} Его ПЛК ({{$a.PLCs}}) останутся — без участка.{{end}}">удалить</button>
+      </td>
+      {{end}}
+    </tr>
+    {{else}}
+    <tr><td class="muted">Участков пока нет.</td></tr>
+    {{end}}
+  </table>
+  <form hx-post="/ui/areas" hx-target="#areas" hx-swap="outerHTML">
+    <input name="name" value="{{.Name}}" placeholder="новый участок, например «Мехобработка»" size="32" aria-label="Новый участок">
+    <button>Добавить участок</button>
+    {{if .Err}}<span class="err">{{.Err}}</span>{{end}}
+  </form>
+</div>
 {{end}}
 
 
