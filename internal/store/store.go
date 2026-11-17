@@ -176,6 +176,9 @@ var migrations = []string{
 
 	// 12: участки — группы ПЛК (areas.go); у ПЛК — area_id
 	areasSchema,
+
+	// 13: настройки Telegram-табло: станки, состояния, значения режима, сигналы (telegram.go)
+	telegramSchema,
 }
 
 func Open(path string) (*Store, error) {
