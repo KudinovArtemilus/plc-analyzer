@@ -19,6 +19,8 @@
         .tg-row form { display: inline; margin: 0; }
         .tg-move { padding: 0 6px; }
         .tg-checks label { margin-right: 14px; white-space: nowrap; }
+                .tg-json { background: var(--panel, #eee); border: 1px solid var(--border); padding: 10px;
+                   max-height: 480px; overflow: auto; font-size: 12px; }
     </style>
 </head>
 {{end}}
@@ -74,6 +76,19 @@
             {{end}}
         </tbody>
     </table>
+    {{end}}
+    {{end}}
+    
+    <h4 class="tg-sec" id="preview">Что уйдёт наружу</h4>
+    <div class="note">Ровно этот текст анализатор будет отправлять {{tgPeriodName .Period}}, когда появится
+        отправка. <b>Сейчас не отправляется никуда.</b> Здесь только станки с «показывать» и только то, что
+        отмечено в их карточке. Нет и не будет: IP, адресов сигналов, путей к файлам, настроек, паролей.
+        Доли смены — от начала смены до сейчас; время без записи — «Нет связи».</div>
+    {{with .Preview}}
+    {{if .Err}}<p class="err">Сводка не собирается: {{.Err}}</p>{{else}}
+    <p><small class="muted">{{.Bytes}} байт · <a href="/telegram/summary.json" target="_blank">открыть как
+                JSON</a> · обновить — перезагрузить страницу</small></p>
+    <pre class="tg-json">{{.JSON}}</pre>
     {{end}}
     {{end}}
     {{template "about"}}

@@ -23,9 +23,10 @@ import (
 
 // tgListView — первая страница: период и станки по участкам
 type tgListView struct {
-	Period int
-	Areas  []tgAreaView
-	Err    string
+	Period  int
+	Areas   []tgAreaView
+	Err     string
+	Preview tgPreview
 }
 
 type tgAreaView struct {
@@ -118,6 +119,7 @@ func (s *Server) tgPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	v.Preview = s.tgPreviewOf(r.Context())
 	render(w, "telegram", v)
 }
 
