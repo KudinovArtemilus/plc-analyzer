@@ -23,10 +23,17 @@ var dataTypes = []string{"BOOL", "BYTE", "INT", "WORD", "DINT", "DWORD", "REAL"}
 
 var tmpl = template.Must(template.New("").
 	Funcs(template.FuncMap{
-		"types":     func() []string { return dataTypes },
-		"kinds":     func() []string { return []string{store.KindTrend, store.KindAlarm, store.KindWarning} },
-		"kindTitle": kindTitle,
-		"about":     about.Line, // подпись в подвале страниц (templates/about.html)
+		"types":        func() []string { return dataTypes },
+		"kinds":        func() []string { return []string{store.KindTrend, store.KindAlarm, store.KindWarning} },
+		"kindTitle":    kindTitle,
+		"about":        about.Line, // подпись в подвале страниц (templates/about.html)
+		"tgColors":     func() []string { return store.TGColors },
+		"tgColorName":  func(c string) string { return tgColorNames[c] },
+		"tgColorHex":   func(c string) string { return tgColorHex[c] },
+		"tgHows":       func() []string { return store.TGHows },
+		"tgHowName":    func(h string) string { return tgHowNames[h] },
+		"tgPeriods":    func() []int { return store.TGPeriods },
+		"tgPeriodName": tgPeriodName,
 	}).
 	ParseFS(templatesFS, "templates/*.html"))
 

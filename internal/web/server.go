@@ -195,6 +195,20 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /ui/areas/{id}/move", s.moveArea)
 	mux.HandleFunc("DELETE /ui/areas/{id}", s.deleteArea)
 
+	// Telegram: что видно на телефоне (telegram_page.go). Только настройки — наружу пока ничего
+	mux.HandleFunc("GET /telegram", s.tgPage)
+	mux.HandleFunc("POST /telegram/period", s.tgPeriodSave)
+	mux.HandleFunc("GET /telegram/{plc}", s.tgMachinePage)
+	mux.HandleFunc("POST /telegram/{plc}", s.tgMachineSave)
+	mux.HandleFunc("POST /telegram/{plc}/states", s.tgStateAdd)
+	mux.HandleFunc("POST /telegram/{plc}/states/{id}", s.tgStateSave)
+	mux.HandleFunc("POST /telegram/{plc}/states/{id}/move", s.tgStateMove)
+	mux.HandleFunc("POST /telegram/{plc}/states/{id}/delete", s.tgStateDelete)
+	mux.HandleFunc("POST /telegram/{plc}/signals", s.tgSignalAdd)
+	mux.HandleFunc("POST /telegram/{plc}/signals/{sid}", s.tgSignalSave)
+	mux.HandleFunc("POST /telegram/{plc}/signals/{sid}/move", s.tgSignalMove)
+	mux.HandleFunc("POST /telegram/{plc}/signals/{sid}/delete", s.tgSignalDelete)
+
 	mux.HandleFunc("GET /login", s.loginPage) // вход по паролю для просмотра с других ПК (37)
 	mux.HandleFunc("POST /login", s.login)
 	mux.HandleFunc("GET /logout", s.logout)

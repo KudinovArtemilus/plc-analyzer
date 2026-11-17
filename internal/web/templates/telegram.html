@@ -1,0 +1,267 @@
+{{define "tgnav"}}
+<nav><a href="/">← Графики</a> <a href="/plcs">ПЛК</a> <a href="/signals">Сигналы</a>
+    <a href="/history">История</a> <a href="/events">События</a>
+    {{if .}}<a href="/telegram">Telegram</a>{{else}}<b>Telegram</b>{{end}}</nav>
+{{end}}
+
+{{define "tghead"}}
+<head>
+    <meta charset="utf-8">
+    <title>{{.}} — PLC Analyzer</title>
+    <link rel="stylesheet" href="/isa101.css">
+    <link rel="stylesheet" href="/access.css">
+    <style>
+        .tg-area { margin: 18px 0 6px; }
+        .tg-sec { margin-top: 22px; }
+        .tg-sw { display: inline-block; width: 14px; height: 14px; vertical-align: -2px; margin-right: 4px;
+                 border: 1px solid var(--border); }
+        .tg-off { color: var(--text-3); }
+        .tg-row form { display: inline; margin: 0; }
+        .tg-move { padding: 0 6px; }
+        .tg-checks label { margin-right: 14px; white-space: nowrap; }
+    </style>
+</head>
+{{end}}
+
+
+{{define "telegram"}}
+<!doctype html>
+<html lang="ru">
+{{template "tghead" "Telegram"}}
+
+<body>
+    {{template "tgnav" false}}
+    <h3>Telegram</h3>
+    <div class="note">Что будет видно на телефоне — станки по участкам. <b>Сейчас наружу не уходит ничего:</b>
+        здесь только настройки. Отправка в облако появится позже и будет включаться отдельно.
+        ПЛК, у которого не стоит «показывать», не уйдёт никогда. Участок у ПЛК выбирается на странице
+        <a href="/plcs">«ПЛК»</a>.</div>
+
+    <form method="post" action="/telegram/period" class="panel-form">
+        <b>Отправлять сводку:</b>
+        <select name="period">
+            {{range tgPeriods}}<option value="{{.}}" {{if eq . $.Period}}selected{{end}}>{{tgPeriodName .}}</option>{{end}}
+        </select>
+        <button>Сохранить</button>
+        <small class="muted">Об аварии — отдельным сообщением сразу, не дожидаясь сводки.</small>
+        {{if .Err}}<span class="err">{{.Err}}</span>{{end}}
+    </form>
+
+    {{range .Areas}}
+    <h4 class="tg-area">{{.Name}}</h4>
+    {{if not .Machines}}<p class="muted">На участке нет ПЛК.</p>{{else}}
+    <table>
+        <thead>
+            <tr>
+                <th>ПЛК</th>
+                <th>На телефоне</th>
+                <th>Подпись</th>
+                <th>Состояний</th>
+                <th>Сигналов</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Machines}}
+            <tr class="{{if not .M.Enabled}}tg-off{{end}}">
+                <td><b>{{.PLC.Name}}</b></td>
+                <td>{{if .M.Enabled}}показывать{{else}}выключен{{end}}</td>
+                <td>{{if .M.Label}}{{.M.Label}}{{else}}<span class="muted">{{.PLC.Name}}</span>{{end}}</td>
+                <td class="mono">{{.States}}</td>
+                <td class="mono">{{.Signals}}</td>
+                <td><a href="/telegram/{{.PLC.ID}}">настроить</a></td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{end}}
+    {{end}}
+    {{template "about"}}
+</body>
+
+</html>
+{{end}}
+
+
+{{define "tgmachine"}}
+<!doctype html>
+<html lang="ru">
+{{template "tghead" .PLC.Name}}
+
+<body>
+    {{template "tgnav" true}}
+    <h3>Telegram: {{.PLC.Name}}</h3>
+    {{if .Err}}<p class="err">{{.Err}}</p>{{end}}
+
+    <!-- Станок: показывать, подпись, сигнал режима, карточка -->
+    <form method="post" action="/telegram/{{.PLC.ID}}" id="machine" class="tg-sec">
+        <p><label><input type="checkbox" name="on" {{if .M.Enabled}}checked{{end}}> <b>показывать в Telegram</b></label>
+            {{if not .M.Enabled}}<small class="muted">— выключен: об этом ПЛК наружу не уходит ничего</small>{{end}}</p>
+        <p>Подпись на телефоне: <input name="label" value="{{.M.Label}}" size="30" maxlength="30"
+                placeholder="{{.PLC.Name}}"> <small class="muted">пусто — имя ПЛК</small></p>
+        <p>Сигнал режима:
+            <select name="mode">
+                <option value="0">— не выбран —</option>
+                {{range .ModeSigs}}<option value="{{.ID}}" {{if eq .ID $.M.ModeSignalID}}selected{{end}}>{{.Name}} ({{.Type}})</option>{{end}}
+            </select>
+            {{if .ModeSuggested}}<small class="muted">предложен из настройки паспорта — нажмите «Сохранить»</small>{{end}}
+            {{if not .ModeSigs}}<small class="muted">у ПЛК нет целых сигналов (INT, DINT, WORD…)</small>{{end}}
+        </p>
+        <p class="tg-checks"><b>Карточка станка:</b>
+            <label><input type="checkbox" name="show_state" {{if .M.Show.State}}checked{{end}}> состояние</label>
+            <label><input type="checkbox" name="show_step" {{if .M.Show.Step}}checked{{end}}> шаг</label>
+            <label><input type="checkbox" name="show_bar" {{if .M.Show.Bar}}checked{{end}}> полоска смены, %</label>
+            <label><input type="checkbox" name="show_signals" {{if .M.Show.Signals}}checked{{end}}> сигналы</label>
+            <label><input type="checkbox" name="show_alarms" {{if .M.Show.Alarms}}checked{{end}}> аварии</label>
+        </p>
+        <p class="tg-checks"><b>Всегда есть:</b>
+            <label><input type="checkbox" name="alarm" {{if .M.AlarmState}}checked{{end}}> <span class="tg-sw"
+                    style="background:var(--alarm)"></span>Авария (важнее режима)</label>
+            <label><input type="checkbox" name="offline" {{if .M.OfflineState}}checked{{end}}> Нет связи</label>
+        </p>
+        <button>Сохранить</button>
+    </form>
+
+    <!-- Состояния -->
+    <h4 class="tg-sec" id="states">Состояния на телефоне</h4>
+    <div class="note">Свои названия и цвета. Состояние «по коду» — какие значения сигнала режима в него входят
+        (значение — только в одном состоянии: вписали в другое — оно переедет). «По биту» — состояние, пока
+        бит = 1. Если сработало несколько — на телефоне то, что выше. Красный и жёлтый заняты аварией и
+        предупреждением.</div>
+    {{if .Codes}}<p><small>Значения режима из справочника:
+            {{range $i, $c := .Codes}}{{if $i}}, {{end}}<b>{{$c.Value}}</b> {{$c.Text}}{{end}}</small></p>{{end}}
+    {{if .Unused}}<p><small class="muted">Не входят ни в одно состояние (не считаются):
+            {{range $i, $c := .Unused}}{{if $i}}, {{end}}{{$c.Value}} {{$c.Text}}{{end}}</small></p>{{end}}
+
+    {{if .States}}
+    <table>
+        <thead>
+            <tr>
+                <th></th>
+                <th>Название</th>
+                <th>Цвет</th>
+                <th>Вид</th>
+                <th>Значения / бит</th>
+                <th>в %</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .States}}
+            <tr class="tg-row">
+                <td>
+                    <form method="post" action="/telegram/{{$.PLC.ID}}/states/{{.ID}}/move?d=-1"><button class="tg-move" title="выше">▲</button></form>
+                    <form method="post" action="/telegram/{{$.PLC.ID}}/states/{{.ID}}/move?d=1"><button class="tg-move" title="ниже">▼</button></form>
+                </td>
+                <td><span class="tg-sw" style="background:{{tgColorHex .Color}}"></span>
+                    <input form="st{{.ID}}" name="name" value="{{.Name}}" size="16" maxlength="30" required></td>
+                <td><select form="st{{.ID}}" name="color">
+                        {{$c := .Color}}{{range tgColors}}<option value="{{.}}" {{if eq . $c}}selected{{end}}>{{tgColorName .}}</option>{{end}}
+                    </select></td>
+                <td><select form="st{{.ID}}" name="kind" onchange="tgKind(this)">
+                        <option value="code" {{if not .BitSignalID}}selected{{end}}>по коду</option>
+                        <option value="bit" {{if .BitSignalID}}selected{{end}}>по биту</option>
+                    </select></td>
+                <td>
+                    <input form="st{{.ID}}" name="codes" value="{{.CodesText}}" size="10" placeholder="1, 2"
+                        title="по коду: значения сигнала режима через запятую">
+                    <select form="st{{.ID}}" name="bit" title="по биту: сигнал BOOL">
+                        <option value="0">— бит —</option>
+                        {{$b := .BitSignalID}}{{range $.Bits}}<option value="{{.ID}}" {{if eq .ID $b}}selected{{end}}>{{.Name}}</option>{{end}}
+                    </select>
+                </td>
+                <td><input form="st{{.ID}}" type="checkbox" name="pct" {{if .Pct}}checked{{end}}></td>
+                <td>
+                    <form method="post" action="/telegram/{{$.PLC.ID}}/states/{{.ID}}" id="st{{.ID}}"><button>Сохранить</button></form>
+                    <form method="post" action="/telegram/{{$.PLC.ID}}/states/{{.ID}}/delete"
+                        onsubmit="return confirm('Удалить состояние «{{.Name}}»?')"><button>✕</button></form>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}<p class="muted">Своих состояний пока нет — на телефоне будут только «Авария» и «Нет связи».</p>{{end}}
+
+    <form method="post" action="/telegram/{{.PLC.ID}}/states" class="panel-form">
+        <b>+ состояние:</b>
+        <input name="name" size="16" maxlength="30" placeholder="например: Автомат" required>
+        <select name="color">{{range tgColors}}<option value="{{.}}">{{tgColorName .}}</option>{{end}}</select>
+        <button>Добавить</button>
+    </form>
+
+    <!-- Сигналы карточки -->
+    <h4 class="tg-sec" id="signals">Сигналы на телефоне</h4>
+    <div class="note">Порядок — как на телефоне. «С подписью из справочника» — для шага и кодов: вместо числа
+        текст. Адреса сигналов наружу не уходят — только подпись и значение.</div>
+    {{if .Signals}}
+    <table>
+        <thead>
+            <tr>
+                <th></th>
+                <th>Сигнал</th>
+                <th>Как показывать</th>
+                <th>Подпись на телефоне</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Signals}}
+            <tr class="tg-row">
+                <td>
+                    <form method="post" action="/telegram/{{$.PLC.ID}}/signals/{{.SignalID}}/move?d=-1"><button class="tg-move" title="выше">▲</button></form>
+                    <form method="post" action="/telegram/{{$.PLC.ID}}/signals/{{.SignalID}}/move?d=1"><button class="tg-move" title="ниже">▼</button></form>
+                </td>
+                <td><b>{{.Name}}</b> <small class="muted">{{.Type}}</small></td>
+                <td><select form="sg{{.SignalID}}" name="how">
+                        {{$h := .How}}{{range tgHows}}<option value="{{.}}" {{if eq . $h}}selected{{end}}>{{tgHowName .}}</option>{{end}}
+                    </select></td>
+                <td><input form="sg{{.SignalID}}" name="label" value="{{.Label}}" size="22" maxlength="30" required></td>
+                <td>
+                    <form method="post" action="/telegram/{{$.PLC.ID}}/signals/{{.SignalID}}" id="sg{{.SignalID}}"><button>Сохранить</button></form>
+                    <form method="post" action="/telegram/{{$.PLC.ID}}/signals/{{.SignalID}}/delete"><button title="убрать с телефона">✕</button></form>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}<p class="muted">Пока ни одного — на телефоне будут только состояние и аварии.</p>{{end}}
+
+    {{if .Free}}
+    <form method="post" action="/telegram/{{.PLC.ID}}/signals" class="panel-form">
+        <b>+ сигнал:</b>
+        <input type="search" placeholder="поиск по имени" size="18" oninput="tgFind(this)">
+        <select name="sig" required>
+            {{range .Free}}<option value="{{.ID}}">{{.Name}} · {{.Type}}</option>{{end}}
+        </select>
+        <button>Добавить</button>
+    </form>
+    {{end}}
+
+    <p class="tg-sec"><a href="/telegram">← все станки</a></p>
+    <script>
+        // В строке состояния — только нужное поле: «по коду» — значения, «по биту» — выбор бита
+        function tgKind(sel) {
+            const row = sel.closest('tr'), bit = sel.value === 'bit';
+            row.querySelector('[name=codes]').hidden = bit;
+            row.querySelector('[name=bit]').hidden = !bit;
+        }
+        document.querySelectorAll('select[name=kind]').forEach(tgKind);
+
+        // Поиск в списке сигналов: несколько слов — все должны встретиться, без регистра, ё = е
+        function tgFind(input) {
+            const norm = s => s.toLowerCase().replaceAll('ё', 'е');
+            const words = norm(input.value).split(/\s+/).filter(Boolean);
+            const sel = input.form.querySelector('select');
+            let first = null;
+            for (const o of sel.options) {
+                o.hidden = !words.every(w => norm(o.text).includes(w));
+                if (!o.hidden && !first) first = o;
+            }
+            if (first) sel.value = first.value;
+        }
+    </script>
+    {{template "about"}}
+</body>
+
+</html>
+{{end}}
