@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ru">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Проба ссылки — PLC Analyzer</title>
+    <script>
+        // Запомнить адрес ДО скрипта Telegram: он сам читает часть после #, и что-то может поменяться
+        window.FIRST = { href: location.href, hash: location.hash, search: location.search };
+    </script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body { font: 15px/1.45 system-ui, sans-serif; margin: 16px;
+               background: var(--tg-theme-bg-color, #fff); color: var(--tg-theme-text-color, #222); }
+        h1 { font-size: 18px; margin: 0 0 12px; }
+        .box { border: 1px solid #8884; border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+        .ok { color: #2e7d32; font-weight: 600; }
+        .bad { color: #c62828; font-weight: 600; }
+        .muted { opacity: .65; font-size: 13px; }
+        code { word-break: break-all; }
+    </style>
+</head>
+
+<body>
+    <h1>Проба: дошли ли данные в ссылке</h1>
+    <div id="out"></div>
+    <p class="muted">Страница ничего никуда не отправляет и ничего не хранит — только показывает,
+        что пришло в её адресе. PLC Analyzer · проба перед шагом 45b.</p>
+
+    <script>
+        const F = window.FIRST;
+        const tg = window.Telegram && Telegram.WebApp;
+        if (tg) tg.ready();
+
+        // Наши данные: d=P<длина>_… — после # или после ?
+        function find(part) {
+            const p = new URLSearchParams(part.replace(/^[#?]/, ''));
+            return p.get('d');
+        }
+        function check(d) {
+            if (d == null) return { text: 'нет', cls: 'muted' };
+            const m = /^P(\d+)_/.exec(d);
+            if (!m) return { text: 'есть, но начало испорчено (' + d.length + ' симв.)', cls: 'bad' };
+            const want = +m[1];
+            return d.length === want
+                ? { text: 'дошло целиком: ' + want + ' символов', cls: 'ok' }
+                : { text: 'ОБРЕЗАНО: пришло ' + d.length + ' из ' + want, cls: 'bad' };
+        }
+        const fromHash = check(find(F.hash));
+        const fromQuery = check(find(F.search));
+        const tgParams = new URLSearchParams(F.hash.slice(1));
+        const u = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
+
+        const row = (k, v, cls) => `<div>${k}: <span class="${cls || ''}">${v}</span></div>`;
+        document.getElementById('out').innerHTML = `
+            <div class="box">
+                ${row('Данные после #', fromHash.text, fromHash.cls)}
+                ${row('Данные после ?', fromQuery.text, fromQuery.cls)}
+            </div>
+            <div class="box">
+                ${row('Открыто из Telegram', tg && tg.initData ? 'да' : 'нет (просто браузер)', tg && tg.initData ? 'ok' : 'bad')}
+                ${row('Telegram дописал свои параметры после #', tgParams.has('tgWebAppData') || tgParams.has('tgWebAppVersion') ? 'да' : 'нет')}
+                ${row('Платформа / версия', tg ? (tg.platform + ' / ' + tg.version) : '—')}
+                ${row('Ваш ID (из подписи Telegram)', u ? u.id : '—')}
+            </div>
+            <div class="box muted">
+                Длина всего адреса: ${F.href.length} · после #: ${F.hash.length} · после ?: ${F.search.length}<br>
+                Начало после #: <code>${F.hash.slice(0, 80).replace(/[<>&]/g, '')}…</code>
+            </div>`;
+    </script>
+</body>
+
+</html>
