@@ -17,6 +17,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -144,6 +145,7 @@ func (w *Watcher) Notes(ctx context.Context, now time.Time) ([]Note, error) {
 	}
 	slices.Sort(plcs)
 	var out []Note
+	text := w.codeTexts(ctx)
 	for _, id := range plcs {
 		p := w.pending[id]
 		recent := w.lastSent[id][:0:0]
@@ -167,7 +169,7 @@ func (w *Watcher) Notes(ctx context.Context, now time.Time) ([]Note, error) {
 				name = pl.Name
 			}
 		}
-		out = append(out, Format(name, p.came, p.went))
+		out = append(out, Format(name, p.came, p.went, text))
 		w.lastSent[id] = append(w.lastSent[id], now)
 		delete(w.pending, id)
 	}
@@ -183,39 +185,85 @@ func (w *Watcher) at(plcID int64) *pending {
 	return p
 }
 
-// Format — текст сообщения:
+// Format — текст сообщения: каждая строка — «Оборудование — ошибка».
 //
-//	🔴 Шлифовка: Дверь открыта — 09:58
+//	🔴 Шлифовка — Дверь открыта
+//	🔴 Шлифовка — Ошибка привода: Перегрев двигателя (код 7501)
+//	✅ Шлифовка — Дверь открыта: ушла, длилась 3 мин
 //
-//	🔴 Шлифовка: аварий — 3
-//	■ Дверь открыта — 09:58
-//	■ …
-//	✅ ушла: Перегрев масла — длилась 12 мин
-func Format(machine string, came, went []store.Event) Note {
-	var b strings.Builder
-	switch {
-	case len(came) == 1:
-		fmt.Fprintf(&b, "🔴 %s: %s — %s\n", machine, came[0].Message, came[0].Came.Format("15:04"))
-	case len(came) > 1:
-		fmt.Fprintf(&b, "🔴 %s: аварий — %d\n", machine, len(came))
-		for i, e := range came {
-			if i == ListMax {
-				fmt.Fprintf(&b, "… и ещё %d\n", len(came)-ListMax)
-				break
-			}
-			fmt.Fprintf(&b, "■ %s — %s\n", e.Message, e.Came.Format("15:04"))
-		}
-	default:
-		fmt.Fprintf(&b, "%s\n", machine)
+// Время не пишем: оно и так у сообщения в Telegram (уходит через 2–3 с после аварии).
+// text — текст ошибки для записи журнала (с подписью кода из справочника); nil — как в журнале.
+func Format(machine string, came, went []store.Event, text func(store.Event) string) Note {
+	if text == nil {
+		text = func(e store.Event) string { return e.Message }
 	}
-	for i, e := range went {
-		if i == ListMax {
-			fmt.Fprintf(&b, "… и ещё ушло %d\n", len(went)-ListMax)
+	var lines []string
+	add := func(line string) bool {
+		if len(lines) == ListMax {
+			return false
+		}
+		lines = append(lines, line)
+		return true
+	}
+	shown := 0
+	for _, e := range came {
+		if !add("🔴 " + machine + " — " + text(e)) {
 			break
 		}
-		fmt.Fprintf(&b, "✅ ушла: %s — длилась %s\n", e.Message, Duration(e.Went.Sub(e.Came)))
+		shown++
 	}
-	return Note{Text: strings.TrimRight(b.String(), "\n"), Silent: len(came) == 0}
+	for _, e := range went {
+		if !add("✅ " + machine + " — " + text(e) + ": ушла, длилась " + Duration(e.Went.Sub(e.Came))) {
+			break
+		}
+		shown++
+	}
+	if rest := len(came) + len(went) - shown; rest > 0 {
+		lines = append(lines, fmt.Sprintf("… и ещё %d", rest))
+	}
+	return Note{Text: strings.Join(lines, "\n"), Silent: len(came) == 0}
+}
+
+// codeSep — так детектор дописывает код к тексту аварии: «Ошибка привода: код 7501» (events/detector.go)
+const codeSep = ": код "
+
+// codeTexts — подпись кода из справочника сигнала: «Ошибка привода: Перегрев двигателя (код 7501)».
+// Справочника или строки в нём нет — текст как в журнале.
+func (w *Watcher) codeTexts(ctx context.Context) func(store.Event) string {
+	dicts := map[int64]map[string]int64{} // ПЛК → сигнал → справочник
+	items := map[int64]map[int64]string{} // справочник → код → текст
+	return func(e store.Event) string {
+		i := strings.LastIndex(e.Message, codeSep)
+		if i < 0 {
+			return e.Message
+		}
+		code, err := strconv.ParseInt(e.Message[i+len(codeSep):], 10, 64)
+		if err != nil {
+			return e.Message
+		}
+		if dicts[e.PLCID] == nil {
+			dicts[e.PLCID] = map[string]int64{}
+			sigs, _ := w.st.Signals(ctx, e.PLCID)
+			for _, sg := range sigs {
+				dicts[e.PLCID][sg.Name] = sg.DictID
+			}
+		}
+		d := dicts[e.PLCID][e.Signal]
+		if d == 0 {
+			return e.Message
+		}
+		if items[d] == nil {
+			items[d] = map[int64]string{}
+			list, _ := w.st.DictItems(ctx, d)
+			for _, it := range list {
+				items[d][it.Value] = it.Text
+			}
+		}
+		if t := items[d][code]; t != "" {
+			return fmt.Sprintf("%s: %s (код %d)", e.Message[:i], t, code)
+		}
+		return e.Message
+	}
 }
 
 // Duration — «меньше минуты», «12 мин», «2 ч 5 мин»

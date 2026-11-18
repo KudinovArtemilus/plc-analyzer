@@ -54,7 +54,7 @@ func TestNotes(t *testing.T) {
 		{Signal: "Смазка", Kind: store.KindWarning, Message: "Мало смазки", On: true, At: t0}})
 	st.SaveEdges(ctx, p2, []store.EventEdge{edge("Х", "Авария пресса", true, t0)})
 	n, err := w.Notes(ctx, t0.Add(time.Second))
-	if err != nil || texts(n) != "[false] 🔴 Шлифовка: Дверь открыта — 09:58" {
+	if err != nil || texts(n) != "[false] 🔴 Шлифовка — Дверь открыта" {
 		t.Fatalf("пришла: %v\n%s", err, texts(n))
 	}
 
@@ -66,13 +66,13 @@ func TestNotes(t *testing.T) {
 	st.SaveEdges(ctx, p1, lav)
 	n, _ = w.Notes(ctx, t0.Add(21*time.Second))
 	got := texts(n)
-	if len(n) != 1 || !strings.HasPrefix(got, "[false] 🔴 Шлифовка: аварий — 12\n■ Авария 1 — 09:58") || !strings.Contains(got, "… и ещё 2") {
+	if len(n) != 1 || !strings.HasPrefix(got, "[false] 🔴 Шлифовка — Авария 1\n🔴 Шлифовка — Авария 2\n") || !strings.HasSuffix(got, "🔴 Шлифовка — Авария 10\n… и ещё 2") {
 		t.Errorf("12 разом:\n%s", got)
 	}
 	// Дверь закрыли через 25 с — «ушла» приходит сразу, без звука (третье за минуту — ещё можно)
 	st.SaveEdges(ctx, p1, []store.EventEdge{edge("Дверь", "Дверь открыта", false, t0.Add(25*time.Second))})
 	n, _ = w.Notes(ctx, t0.Add(26*time.Second))
-	if texts(n) != "[true] Шлифовка\n✅ ушла: Дверь открыта — длилась меньше минуты" {
+	if texts(n) != "[true] ✅ Шлифовка — Дверь открыта: ушла, длилась меньше минуты" {
 		t.Errorf("ушла:\n%s", texts(n))
 	}
 	// Четвёртое за минуту — лавина: копится до конца окна (минута от первого сообщения)
@@ -82,7 +82,7 @@ func TestNotes(t *testing.T) {
 	}
 	st.SaveEdges(ctx, p1, []store.EventEdge{edge("A2", "Авария 2", false, t0.Add(40*time.Second))})
 	n, _ = w.Notes(ctx, t0.Add(62*time.Second))
-	if texts(n) != "[true] Шлифовка\n✅ ушла: Авария 1 — длилась меньше минуты\n✅ ушла: Авария 2 — длилась меньше минуты" {
+	if texts(n) != "[true] ✅ Шлифовка — Авария 1: ушла, длилась меньше минуты\n✅ Шлифовка — Авария 2: ушла, длилась меньше минуты" {
 		t.Errorf("после окна:\n%s", texts(n))
 	}
 }
@@ -111,5 +111,39 @@ func TestDuration(t *testing.T) {
 		if got := Duration(d); got != want {
 			t.Errorf("%v: %s", d, got)
 		}
+	}
+}
+
+// Авария по коду: подпись кода из справочника сигнала; кода нет в справочнике — как в журнале
+func TestCodeText(t *testing.T) {
+	st, ctx, p1, _ := setup(t)
+	d, _ := st.AddDict(ctx, "тест", "Ошибки привода")
+	st.SetDictItem(ctx, "тест", d, store.DictItem{Value: 7501, Text: "Перегрев двигателя"})
+	id, err := st.AddSignal(ctx, "тест", store.SignalRow{PLCID: p1, Name: "Привод", Addr: "DB1.DBW0", Type: "INT",
+		PeriodMs: 100, Scale: 1, Enabled: true, Kind: store.KindAlarm, Message: "Ошибка привода"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, _ := st.Signal(ctx, id)
+	r.DictID = d
+	if err := st.UpdateSignal(ctx, "тест", r); err != nil {
+		t.Fatal(err)
+	}
+
+	w := New(st)
+	w.Notes(ctx, t0)
+	st.SaveEdges(ctx, p1, []store.EventEdge{edge("Привод", "Ошибка привода: код 7501", true, t0)})
+	n, _ := w.Notes(ctx, t0.Add(time.Second))
+	if want := "[false] 🔴 Шлифовка — Ошибка привода: Перегрев двигателя (код 7501)"; texts(n) != want {
+		t.Errorf("код из справочника:\n%s\nждали:\n%s", texts(n), want)
+	}
+	// Код сменился на 42, которого нет в справочнике: старая ушла, новая — как в журнале
+	st.SaveEdges(ctx, p1, []store.EventEdge{
+		edge("Привод", "Ошибка привода: код 7501", false, t0.Add(5*time.Second)),
+		edge("Привод", "Ошибка привода: код 42", true, t0.Add(5*time.Second))})
+	n, _ = w.Notes(ctx, t0.Add(6*time.Second))
+	want := "[false] 🔴 Шлифовка — Ошибка привода: код 42\n✅ Шлифовка — Ошибка привода: Перегрев двигателя (код 7501): ушла, длилась меньше минуты"
+	if texts(n) != want {
+		t.Errorf("смена кода:\n%s\nждали:\n%s", texts(n), want)
 	}
 }
