@@ -30,16 +30,16 @@ func TestTGBotConfig(t *testing.T) {
 			t.Errorf("«%s»: %v", bad, err)
 		}
 	}
-	users, err := ParseTGUsers("379479537, 123;123 456")
-	if err != nil || fmt.Sprint(users) != "[379479537 123 456]" {
+	users, err := ParseTGUsers("111222333, 123;123 456")
+	if err != nil || fmt.Sprint(users) != "[111222333 123 456]" {
 		t.Fatalf("ID: %v %v", users, err)
 	}
-	if _, err := ParseTGUsers("379479537, Артём"); !errors.Is(err, ErrTGUsers) {
+	if _, err := ParseTGUsers("111222333, Артём"); !errors.Is(err, ErrTGUsers) {
 		t.Errorf("буквы в ID: %v", err)
 	}
 	st.SetTGUsers(ctx, "тест", users)
 	b, _ = st.TGBotConfig(ctx)
-	if b.Token != token || fmt.Sprint(b.Users) != "[379479537 123 456]" {
+	if b.Token != token || fmt.Sprint(b.Users) != "[111222333 123 456]" {
 		t.Errorf("после сохранения: %+v", b)
 	}
 

@@ -36,7 +36,7 @@ type TGBot struct {
 
 var (
 	ErrTGToken = errors.New("это не похоже на токен бота: он выглядит как 123456789:AAH… (его выдаёт @BotFather)")
-	ErrTGUsers = errors.New("Telegram ID — числа через запятую, например: 379479537, 123456789")
+	ErrTGUsers = errors.New("Telegram ID — числа через запятую, например: 111222333, 123456789")
 	ErrTGPage  = errors.New("адрес табло должен начинаться с https://")
 )
 
@@ -94,7 +94,7 @@ func (s *Store) SetTGPage(ctx context.Context, who, page string) error {
 	return s.SetSetting(ctx, who, tgPageKey, page, "Telegram: адрес табло")
 }
 
-// ParseTGUsers — «379479537, 123» → [379479537 123]; повторы убираются
+// ParseTGUsers — «111222333, 123» → [111222333 123]; повторы убираются
 func ParseTGUsers(text string) ([]int64, error) {
 	var out []int64
 	for _, f := range strings.FieldsFunc(text, func(c rune) bool { return c == ',' || c == ';' || c == ' ' }) {
