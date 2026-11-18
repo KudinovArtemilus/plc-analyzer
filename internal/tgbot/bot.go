@@ -23,8 +23,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -51,10 +53,11 @@ type Config struct {
 type Deps struct {
 	Load    func(ctx context.Context) (Config, error)
 	Summary func(ctx context.Context) (summary.Summary, error)
-	Notes   func(ctx context.Context) ([]Note, error) // уведомления об авариях (45d); nil — нет
-	Report  func(ctx context.Context) (string, error) // итог смены (45e): текст — один раз после конца смены
-	API     string                                    // "" — https://api.telegram.org (в тестах — свой сервер)
-	Idle    time.Duration                             // пауза, если бот не настроен или Telegram недоступен; 0 — 30 с
+	Notes   func(ctx context.Context) ([]Note, error)             // уведомления об авариях (45d); nil — нет
+	Report  func(ctx context.Context) (string, error)             // итог смены (45e): текст — один раз после конца смены
+	Ask     func(ctx context.Context, text string) (Reply, error) // вопрос обычными словами (45f); nil — только сводка
+	API     string                                                // "" — https://api.telegram.org (в тестах — свой сервер)
+	Idle    time.Duration                                         // пауза, если бот не настроен или Telegram недоступен; 0 — 30 с
 }
 
 // Status — для страницы «Telegram»: что с ботом. Токена здесь нет.
@@ -186,6 +189,40 @@ func (b *Bot) Run(ctx context.Context) {
 }
 
 // push — каждому получателю кнопка меню «Табло» со сводкой в ссылке
+// Reply — ответ на вопрос: текст или картинка PNG с подписью
+type Reply struct {
+	Text  string
+	Photo []byte
+}
+
+// isStatus — сообщение просит сводку, а не график
+func isStatus(text string) bool {
+	t := strings.ToLower(strings.TrimSpace(text))
+	switch t {
+	case "", "/start", "/status", "статус", "табло", "сводка", "/табло":
+		return true
+	}
+	return false
+}
+
+// reply — отправить ответ: картинку (sendPhoto) или текст
+func (b *Bot) reply(ctx context.Context, token string, chat int64, r Reply) error {
+	if len(r.Photo) == 0 {
+		return b.call(ctx, token, "sendMessage", map[string]any{"chat_id": chat, "text": r.Text}, nil)
+	}
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	w.WriteField("chat_id", strconv.FormatInt(chat, 10))
+	w.WriteField("caption", r.Text)
+	part, err := w.CreateFormFile("photo", "chart.png")
+	if err != nil {
+		return err
+	}
+	part.Write(r.Photo)
+	w.Close()
+	return b.post(ctx, token, "sendPhoto", w.FormDataContentType(), &body, nil)
+}
+
 // Note — уведомление: текст и «без звука»
 type Note struct {
 	Text   string
@@ -299,6 +336,19 @@ func (b *Bot) poll(ctx context.Context, cfg Config, offset int, wait time.Durati
 			}
 			continue
 		}
+		// Вопрос обычными словами («давление шлифовка 10 мин») — ответ картинкой или текстом.
+		// Пустое, /start, /status, «статус», «табло» — сводка, как раньше.
+		if b.d.Ask != nil && !isStatus(m.Text) {
+			rep, err := b.d.Ask(ctx, m.Text)
+			if err != nil {
+				rep = Reply{Text: "Не получилось ответить: " + err.Error()}
+				log.Printf("telegram: вопрос «%s»: %v", m.Text, err)
+			}
+			if err := b.reply(ctx, cfg.Token, m.Chat.ID, rep); err != nil {
+				return offset, err
+			}
+			continue
+		}
 		if sum == nil {
 			s, err := b.d.Summary(ctx)
 			if err != nil {
@@ -355,11 +405,16 @@ func cutLog(sum summary.Summary, keep int) summary.Summary {
 // call — метод Bot API. Токен — только в адресе запроса; в текст ошибок он не попадает.
 func (b *Bot) call(ctx context.Context, token, method string, params, out any) error {
 	body, _ := json.Marshal(params)
-	req, err := http.NewRequestWithContext(ctx, "POST", b.d.API+"/bot"+token+"/"+method, bytes.NewReader(body))
+	return b.post(ctx, token, method, "application/json", bytes.NewReader(body), out)
+}
+
+// post — запрос к Bot API с готовым телом (JSON или multipart с картинкой)
+func (b *Bot) post(ctx context.Context, token, method, contentType string, body io.Reader, out any) error {
+	req, err := http.NewRequestWithContext(ctx, "POST", b.d.API+"/bot"+token+"/"+method, body)
 	if err != nil {
 		return errors.New(hide(err.Error(), token))
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	resp, err := b.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("%s: %s", method, hide(err.Error(), token))

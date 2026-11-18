@@ -27,6 +27,7 @@ type fakeTelegram struct {
 	calls   []string         // метод: параметры
 	sent    []map[string]any // sendMessage
 	menus   []map[string]any // setChatMenuButton
+	photos  []string         // sendPhoto: подписи
 	fail    string           // ответить ошибкой на этот метод
 	tooMany string           // на этот метод — «Too Many Requests: retry after 162»
 }
@@ -35,6 +36,24 @@ func (f *fakeTelegram) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(r.URL.Path, "/") // /bot<token>/<method>
 	method := parts[len(parts)-1]
 	var p map[string]any
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/") {
+		r.ParseMultipartForm(1 << 20)
+		file, _, err := r.FormFile("photo")
+		if err == nil {
+			raw, _ := io.ReadAll(file)
+			if string(raw[1:4]) == "PNG" {
+				f.mu.Lock()
+				f.photos = append(f.photos, r.FormValue("caption"))
+				f.mu.Unlock()
+			}
+		}
+		parts := strings.Split(r.URL.Path, "/")
+		f.mu.Lock()
+		f.calls = append(f.calls, parts[len(parts)-1])
+		f.mu.Unlock()
+		json.NewEncoder(w).Encode(map[string]any{"ok": true, "result": true})
+		return
+	}
 	json.NewDecoder(r.Body).Decode(&p)
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -327,5 +346,50 @@ func TestLinkCutsLog(t *testing.T) {
 	}
 	if len(sum.Areas[0].Machines[0].Log) != summary.LogMax {
 		t.Error("исходная сводка испорчена — резать надо копию")
+	}
+}
+
+// Вопрос обычными словами — ответ картинкой; «статус» — по-прежнему сводка
+func TestAsk(t *testing.T) {
+	f := &fakeTelegram{updates: []map[string]any{
+		msg(1, 111, "private", "давление шлифовка 10 мин"),
+		msg(2, 111, "private", "статус"),
+		msg(3, 999, "private", "давление шлифовка 10 мин"), // чужой — ничего
+	}}
+	png := []byte("\x89PNG\r\n\x1a\n")
+	asked := ""
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+	b := New(Deps{API: srv.URL, Idle: 10 * time.Millisecond,
+		Load: func(context.Context) (Config, error) {
+			return Config{Token: token, Users: []int64{111}, Page: "https://x/", Period: 60}, nil
+		},
+		Summary: func(context.Context) (summary.Summary, error) { return demo, nil },
+		Ask: func(_ context.Context, text string) (Reply, error) {
+			asked += text + ";"
+			return Reply{Text: "📈 Шлифовка", Photo: png}, nil
+		}})
+	log.SetOutput(io.Discard)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { b.Run(ctx); close(done) }()
+	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		f.mu.Lock()
+		ok := len(f.photos) > 0 && len(f.sent) > 0
+		f.mu.Unlock()
+		if ok {
+			break
+		}
+	}
+	cancel()
+	<-done
+	if asked != "давление шлифовка 10 мин;" {
+		t.Errorf("спросили: %q", asked)
+	}
+	if len(f.photos) != 1 || f.photos[0] != "📈 Шлифовка" {
+		t.Errorf("картинки: %q", f.photos)
+	}
+	if len(f.sent) != 1 || !strings.Contains(f.sent[0]["text"].(string), "Шлифовка — Автомат") {
+		t.Errorf("сводка на «статус»: %+v", f.sent)
 	}
 }
