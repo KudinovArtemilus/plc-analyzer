@@ -204,6 +204,8 @@ func (b *Bot) sendNotes(ctx context.Context, cfg Config) {
 			switch {
 			case err == nil:
 				sent++
+				first, _, _ := strings.Cut(n.Text, "\n")
+				log.Printf("telegram: отправлено %d: %s", u, first)
 			case errors.As(err, &tm):
 				b.noteHold = time.Now().Add(tm.After + time.Second)
 				b.fail(fmt.Errorf("уведомление: %w", err))
@@ -241,7 +243,7 @@ func (b *Bot) push(ctx context.Context, cfg Config, sum summary.Summary) {
 		}
 	}
 	b.set(func(s *Status) { s.Pushed, s.Bytes = time.Now(), len(link) })
-	if failed != nil {
+	if failed != nil && ctx.Err() == nil { // остановка службы посреди запроса — не ошибка
 		b.fail(failed)
 		return
 	}

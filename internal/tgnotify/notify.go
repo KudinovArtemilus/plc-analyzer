@@ -7,7 +7,8 @@
 // Правила:
 //   - только аварии (не предупреждения), только станки с «показывать» и «уведомлять»;
 //   - зашунтированная авария молчит (шунт и ставят, чтобы она не мешала);
-//   - после запуска — только новые: старые аварии из журнала не присылаются;
+//   - о каждой активной аварии — один раз, даже если она висела до запуска уведомлений;
+//     что уже сообщено, помнит база: перезапуск службы ничего не повторяет;
 //   - сообщения уходят сразу (проверка журнала — каждые 2 с); всё, что пришло между проверками,
 //     — одним сообщением;
 //   - лавина: по станку не больше Burst сообщений в минуту, дальше копится и уходит одним.
@@ -16,6 +17,7 @@ package tgnotify
 import (
 	"context"
 	"fmt"
+	"log"
 	"slices"
 	"strconv"
 	"strings"
@@ -54,22 +56,55 @@ type Watcher struct {
 	pending   map[int64]*pending    // ждут конца паузы по станку
 	lastSent  map[int64][]time.Time // когда по станку были сообщения за последнюю минуту
 	started   bool
+	told      map[string]bool // о чём уже написали в лог (чтобы не повторять на каждой аварии)
+}
+
+// logOnce — строка в лог один раз за работу службы: почему авария не ушла в Telegram
+func (w *Watcher) logOnce(key, format string, args ...any) {
+	if !w.told[key] {
+		w.told[key] = true
+		log.Printf("telegram: "+format, args...)
+	}
+}
+
+func (w *Watcher) plcName(ctx context.Context, id int64) string {
+	if pl, err := w.st.PLC(ctx, id); err == nil {
+		return pl.Name
+	}
+	return fmt.Sprint("ПЛК ", id)
 }
 
 func New(st *store.Store) *Watcher {
-	return &Watcher{st: st, announced: map[int64]int64{}, pending: map[int64]*pending{}, lastSent: map[int64][]time.Time{}}
+	return &Watcher{st: st, announced: map[int64]int64{}, pending: map[int64]*pending{}, lastSent: map[int64][]time.Time{}, told: map[string]bool{}}
 }
 
-// Notes — что отправить сейчас
+// Notes — что отправить сейчас.
+//
+// Два источника, чтобы не потерять ни одной аварии:
+//  1. активные аварии сейчас: есть, а о ней ещё не сообщали — «пришла»; сообщали, а её уже нет — «ушла».
+//     Так приходят и аварии, которые висели ДО запуска уведомлений или до того, как у станка
+//     поставили галочку «уведомлять», — один раз;
+//  2. новые записи журнала: авария пришла и ушла между проверками (короче 2 с) — тоже сообщаем.
+//
+// Что уже объявлено, хранится в базе (закладка): перезапуск службы не повторяет старое.
 func (w *Watcher) Notes(ctx context.Context, now time.Time) ([]Note, error) {
-	if !w.started { // первый вызов — запомнить, где журнал сейчас; старое не присылаем
-		id, err := w.st.LastEventID(ctx)
+	if !w.started {
+		last, active, ok, err := w.st.TGNotifyState(ctx)
 		if err != nil {
 			return nil, err
 		}
-		w.lastID, w.started = id, true
-		return nil, nil
+		if !ok { // уведомления включились впервые: журнал — с текущего места, активные — сообщим
+			if last, err = w.st.LastEventID(ctx); err != nil {
+				return nil, err
+			}
+		}
+		w.lastID, w.started = last, true
+		for _, id := range active {
+			w.announced[id] = 0 // ПЛК узнаем, когда авария уйдёт
+		}
+		log.Printf("telegram: уведомления об авариях: журнал с записи №%d, уже сообщено о %d активных", last, len(active))
 	}
+	before := fmt.Sprint(w.lastID, w.announcedIDs())
 
 	cfg := map[int64]store.TGMachine{} // настройки станков — один раз за вызов
 	notify := func(plcID int64) (store.TGMachine, bool) {
@@ -80,21 +115,8 @@ func (w *Watcher) Notes(ctx context.Context, now time.Time) ([]Note, error) {
 		}
 		return m, m.Enabled && m.Notify
 	}
-
-	// Новые аварии
-	evs, err := w.st.EventsAfter(ctx, w.lastID, 1000)
-	if err != nil {
-		return nil, err
-	}
 	shelved := map[int64]map[string]bool{}
-	for _, e := range evs {
-		w.lastID = e.ID
-		if e.Kind != store.KindAlarm {
-			continue
-		}
-		if _, ok := notify(e.PLCID); !ok {
-			continue
-		}
+	isShelved := func(e store.Event) bool {
 		if shelved[e.PLCID] == nil {
 			shelved[e.PLCID] = map[string]bool{}
 			shs, _ := w.st.ActiveShelves(ctx, e.PLCID, now)
@@ -102,51 +124,96 @@ func (w *Watcher) Notes(ctx context.Context, now time.Time) ([]Note, error) {
 				shelved[e.PLCID][sh.Signal] = true
 			}
 		}
-		if shelved[e.PLCID][e.Signal] {
-			continue
-		}
-		w.at(e.PLCID).came = append(w.at(e.PLCID).came, e)
-		if e.Active() {
-			w.announced[e.ID] = e.PLCID
-		} else {
-			w.at(e.PLCID).went = append(w.at(e.PLCID).went, e) // пришла и ушла между проверками
-		}
+		return shelved[e.PLCID][e.Signal]
 	}
 
-	// Ушли ли объявленные
-	ids := make([]int64, 0, len(w.announced))
-	for id := range w.announced {
-		ids = append(ids, id)
-	}
-	gone, err := w.st.EventsByID(ctx, ids)
+	// 1. Активные аварии станков с «показывать» и «уведомлять»
+	plcs, err := w.st.PLCs(ctx)
 	if err != nil {
 		return nil, err
 	}
-	found := map[int64]bool{}
-	for _, e := range gone {
-		found[e.ID] = true
-		if !e.Active() {
-			delete(w.announced, e.ID)
-			if _, ok := notify(e.PLCID); ok {
-				w.at(e.PLCID).went = append(w.at(e.PLCID).went, e)
+	active := map[int64]bool{}
+	for _, pl := range plcs {
+		if _, ok := notify(pl.ID); !ok {
+			continue
+		}
+		evs, err := w.st.ActiveEvents(ctx, pl.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range evs {
+			if e.Kind != store.KindAlarm || isShelved(e) {
+				continue
+			}
+			active[e.ID] = true
+			if _, done := w.announced[e.ID]; !done {
+				w.announced[e.ID] = e.PLCID
+				w.at(e.PLCID).came = append(w.at(e.PLCID).came, e)
 			}
 		}
 	}
+
+	// 2. Новые записи журнала: короткие аварии и объяснения в лог, почему не сообщаем
+	evs, err := w.st.EventsAfter(ctx, w.lastID, 1000)
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range evs {
+		w.lastID = e.ID
+		if e.Kind != store.KindAlarm {
+			w.logOnce(fmt.Sprint("warn", e.PLCID), "%s: предупреждения в Telegram не присылаются, только аварии (первое: «%s»)",
+				w.plcName(ctx, e.PLCID), e.Message)
+			continue
+		}
+		if m, ok := notify(e.PLCID); !ok {
+			w.logOnce(fmt.Sprint("off", e.PLCID), "%s: авария «%s» не отправлена — на странице «Telegram» у станка не стоит %s",
+				w.plcName(ctx, e.PLCID), e.Message, missing(m))
+			continue
+		}
+		if isShelved(e) {
+			log.Printf("telegram: %s: авария «%s» зашунтирована — не отправляю", w.plcName(ctx, e.PLCID), e.Message)
+			continue
+		}
+		if _, done := w.announced[e.ID]; !done && !e.Active() { // пришла и ушла между проверками
+			p := w.at(e.PLCID)
+			p.came, p.went = append(p.came, e), append(p.went, e)
+		}
+	}
+
+	// Объявленные, которых среди активных больше нет, — ушли (или их зашунтировали, сняли галочку)
+	var gone []int64
 	for id := range w.announced {
-		if !found[id] {
-			delete(w.announced, id) // записи нет — ПЛК удалили вместе с журналом
+		if !active[id] {
+			gone = append(gone, id)
+		}
+	}
+	recs, err := w.st.EventsByID(ctx, gone)
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range recs {
+		if _, ok := notify(e.PLCID); ok && !e.Active() && !isShelved(e) {
+			w.at(e.PLCID).went = append(w.at(e.PLCID).went, e)
+		}
+	}
+	for _, id := range gone {
+		delete(w.announced, id)
+	}
+	if after := fmt.Sprint(w.lastID, w.announcedIDs()); after != before {
+		if err := w.st.SaveTGNotifyState(ctx, w.lastID, w.announcedIDs()); err != nil {
+			return nil, err
 		}
 	}
 
 	// Сообщения по станкам, у которых кончилась пауза
-	plcs := make([]int64, 0, len(w.pending))
+	ready := make([]int64, 0, len(w.pending))
 	for id := range w.pending {
-		plcs = append(plcs, id)
+		ready = append(ready, id)
 	}
-	slices.Sort(plcs)
+	slices.Sort(ready)
 	var out []Note
 	text := w.codeTexts(ctx)
-	for _, id := range plcs {
+	for _, id := range ready {
 		p := w.pending[id]
 		recent := w.lastSent[id][:0:0]
 		for _, t := range w.lastSent[id] {
@@ -174,6 +241,27 @@ func (w *Watcher) Notes(ctx context.Context, now time.Time) ([]Note, error) {
 		delete(w.pending, id)
 	}
 	return out, nil
+}
+
+// missing — каких галочек не хватает
+func missing(m store.TGMachine) string {
+	switch {
+	case !m.Enabled && !m.Notify:
+		return "«показывать» и «уведомлять об авариях»"
+	case !m.Enabled:
+		return "«показывать»"
+	}
+	return "«уведомлять об авариях»"
+}
+
+// announcedIDs — номера объявленных аварий по порядку (для закладки в базе)
+func (w *Watcher) announcedIDs() []int64 {
+	ids := make([]int64, 0, len(w.announced))
+	for id := range w.announced {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	return ids
 }
 
 func (w *Watcher) at(plcID int64) *pending {

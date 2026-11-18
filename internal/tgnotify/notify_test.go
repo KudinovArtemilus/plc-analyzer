@@ -1,8 +1,11 @@
 package tgnotify
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -42,11 +45,17 @@ func texts(n []Note) string {
 
 func TestNotes(t *testing.T) {
 	st, ctx, p1, p2 := setup(t)
-	// Авария до запуска — не присылается
+	// Авария висела до включения уведомлений — о ней сообщаем один раз (её видно на табло,
+	// значит, и в чате она должна быть)
 	st.SaveEdges(ctx, p1, []store.EventEdge{edge("Старая", "Старая авария", true, t0.Add(-time.Hour))})
 	w := New(st)
-	if n, _ := w.Notes(ctx, t0); len(n) != 0 {
-		t.Fatalf("первый вызов: %s", texts(n))
+	if n, _ := w.Notes(ctx, t0.Add(-2*time.Minute)); texts(n) != "[false] 🔴 Шлифовка — Старая авария" {
+		t.Fatalf("первый запуск: %s", texts(n))
+	}
+	// Перезапуск службы — новый Watcher: о «Старой» второй раз не сообщаем (закладка в базе)
+	w = New(st)
+	if n, _ := w.Notes(ctx, t0.Add(-time.Minute)); len(n) != 0 {
+		t.Fatalf("после перезапуска повтор: %s", texts(n))
 	}
 
 	// Пришла авария; у «Пресса» тоже, но он без «уведомлять»; предупреждение — не авария
@@ -99,8 +108,15 @@ func TestNotesShelvedAndOff(t *testing.T) {
 	}
 	st.SaveTGMachine(ctx, "тест", store.TGMachine{PLCID: p1, Enabled: true, Notify: false})
 	st.SaveEdges(ctx, p1, []store.EventEdge{edge("Масло", "Перегрев", true, t0.Add(2*time.Second))})
+	var logs bytes.Buffer
+	log.SetOutput(&logs)
+	defer log.SetOutput(os.Stderr)
 	if n, _ := w.Notes(ctx, t0.Add(3*time.Second)); len(n) != 0 {
 		t.Errorf("без «уведомлять»: %s", texts(n))
+	}
+	// В логе — почему не ушло: иначе со стороны выглядит как «бот молчит»
+	if !strings.Contains(logs.String(), "SGGT: авария «Перегрев» не отправлена — на странице «Telegram» у станка не стоит «уведомлять об авариях»") {
+		t.Errorf("лог: %s", logs.String())
 	}
 }
 
@@ -145,5 +161,21 @@ func TestCodeText(t *testing.T) {
 	want := "[false] 🔴 Шлифовка — Ошибка привода: код 42\n✅ Шлифовка — Ошибка привода: Перегрев двигателя (код 7501): ушла, длилась меньше минуты"
 	if texts(n) != want {
 		t.Errorf("смена кода:\n%s\nждали:\n%s", texts(n), want)
+	}
+}
+
+// Галочку «уведомлять» поставили, когда авария уже висела, — сообщение приходит сразу
+func TestNotifyTurnedOn(t *testing.T) {
+	st, ctx, p1, _ := setup(t)
+	st.SaveTGMachine(ctx, "тест", store.TGMachine{PLCID: p1, Enabled: true, Notify: false, Label: "Шлифовка"})
+	w := New(st)
+	w.Notes(ctx, t0)
+	st.SaveEdges(ctx, p1, []store.EventEdge{edge("Дверь", "Дверь открыта", true, t0)})
+	if n, _ := w.Notes(ctx, t0.Add(time.Second)); len(n) != 0 {
+		t.Fatalf("без галочки: %s", texts(n))
+	}
+	st.SaveTGMachine(ctx, "тест", store.TGMachine{PLCID: p1, Enabled: true, Notify: true, Label: "Шлифовка"})
+	if n, _ := w.Notes(ctx, t0.Add(10*time.Second)); texts(n) != "[false] 🔴 Шлифовка — Дверь открыта" {
+		t.Errorf("после галочки: %s", texts(n))
 	}
 }
