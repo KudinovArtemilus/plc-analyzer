@@ -32,6 +32,10 @@ import (
 	"github.com/KudinovArtemilus/plc-analyzer/internal/summary"
 )
 
+// MinPeriod — чаще раза в минуту «Табло» не обновляем: Telegram ограничивает setChatMenuButton
+// (при обновлении раз в 10 с ответил «Too Many Requests: retry after 162»)
+const MinPeriod = 60
+
 // MaxLink — самая длинная ссылка «Табло», проверенная пробой (Desktop и Android: 8000 символов данных)
 const MaxLink = 8000
 
@@ -69,7 +73,8 @@ type Bot struct {
 	mu sync.Mutex
 	st Status
 
-	token     string // для какого токена узнали имя бота
+	token     string    // для какого токена узнали имя бота
+	holdUntil time.Time // Telegram попросил подождать («Too Many Requests») — до этого времени «Табло» не трогаем
 	strangers map[int64]bool
 }
 
@@ -138,7 +143,7 @@ func (b *Bot) Run(ctx context.Context) {
 		// Сводка читает файлы смены — собираем её, только когда она нужна:
 		// пора обновить «Табло» или кто-то из получателей написал
 		if !time.Now().Before(next) {
-			next = time.Now().Add(time.Duration(max(cfg.Period, 10)) * time.Second)
+			next = time.Now().Add(time.Duration(max(cfg.Period, MinPeriod)) * time.Second)
 			if sum, err := b.d.Summary(ctx); err != nil {
 				b.fail(fmt.Errorf("сводка: %w", err))
 			} else {
@@ -158,6 +163,9 @@ func (b *Bot) Run(ctx context.Context) {
 
 // push — каждому получателю кнопка меню «Табло» со сводкой в ссылке
 func (b *Bot) push(ctx context.Context, cfg Config, sum summary.Summary) {
+	if time.Now().Before(b.holdUntil) {
+		return // Telegram просил подождать — не злим его ещё сильнее
+	}
 	link, err := Link(cfg.Page, sum)
 	if err != nil {
 		b.fail(err)
@@ -166,6 +174,10 @@ func (b *Bot) push(ctx context.Context, cfg Config, sum summary.Summary) {
 	var failed error
 	for _, u := range cfg.Users {
 		if err := b.menu(ctx, cfg.Token, u, link); err != nil {
+			if b.hold(err) {
+				failed = fmt.Errorf("«Табло»: %w", err)
+				break // остальным — тоже нельзя: ограничение на бота, а не на одного человека
+			}
 			// «chat not found» — человек ещё не нажал /start у бота: Telegram не даёт писать первым
 			failed = fmt.Errorf("«Табло» для %d: %w", u, err)
 		}
@@ -228,8 +240,8 @@ func (b *Bot) poll(ctx context.Context, cfg Config, offset int, wait time.Durati
 			"chat_id": m.Chat.ID, "text": summary.Text(*sum)}, nil); err != nil {
 			return offset, err
 		}
-		if link, err := Link(cfg.Page, *sum); err == nil {
-			b.menu(ctx, cfg.Token, m.From.ID, link) // ответил — у человека сразу есть «Табло»
+		if link, err := Link(cfg.Page, *sum); err == nil && !time.Now().Before(b.holdUntil) {
+			b.hold(b.menu(ctx, cfg.Token, m.From.ID, link)) // ответил — у человека сразу есть «Табло»
 		}
 	}
 	return offset, nil
@@ -266,17 +278,44 @@ func (b *Bot) call(ctx context.Context, token, method string, params, out any) e
 		OK          bool            `json:"ok"`
 		Description string          `json:"description"`
 		Result      json.RawMessage `json:"result"`
+		Parameters  struct {
+			RetryAfter int `json:"retry_after"`
+		} `json:"parameters"`
 	}
 	if err := json.Unmarshal(raw, &r); err != nil {
 		return fmt.Errorf("%s: ответ не JSON (HTTP %d)", method, resp.StatusCode)
 	}
 	if !r.OK {
+		if r.Parameters.RetryAfter > 0 {
+			return &TooManyError{Method: method, After: time.Duration(r.Parameters.RetryAfter) * time.Second}
+		}
 		return fmt.Errorf("%s: %s", method, hide(r.Description, token))
 	}
 	if out != nil {
 		return json.Unmarshal(r.Result, out)
 	}
 	return nil
+}
+
+// TooManyError — Telegram: «Too Many Requests: retry after N» — слишком часто, подождите N с
+type TooManyError struct {
+	Method string
+	After  time.Duration
+}
+
+func (e *TooManyError) Error() string {
+	return fmt.Sprintf("%s: Telegram просит не так часто — пауза %v (до %s)",
+		e.Method, e.After, time.Now().Add(e.After).Format("15:04:05"))
+}
+
+// hold — если Telegram просит подождать, запомнить до какого времени; true — это был такой ответ
+func (b *Bot) hold(err error) bool {
+	var tm *TooManyError
+	if !errors.As(err, &tm) {
+		return false
+	}
+	b.holdUntil = time.Now().Add(tm.After + time.Second)
+	return true
 }
 
 func hide(s, token string) string {

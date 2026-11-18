@@ -27,6 +27,7 @@ type fakeTelegram struct {
 	sent    []map[string]any // sendMessage
 	menus   []map[string]any // setChatMenuButton
 	fail    string           // ответить ошибкой на этот метод
+	tooMany string           // на этот метод — «Too Many Requests: retry after 162»
 }
 
 func (f *fakeTelegram) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -39,6 +40,11 @@ func (f *fakeTelegram) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.calls = append(f.calls, method)
 	if parts[1] != "bot"+token {
 		w.Write([]byte(`{"ok":false,"description":"Unauthorized"}`))
+		return
+	}
+	if method == f.tooMany {
+		f.menus = append(f.menus, p)
+		w.Write([]byte(`{"ok":false,"error_code":429,"description":"Too Many Requests: retry after 162","parameters":{"retry_after":162}}`))
 		return
 	}
 	if method == f.fail {
@@ -187,5 +193,23 @@ func TestNoToken(t *testing.T) {
 	b := startBot(t, f, Config{}, func() bool { return time.Since(start) > 100*time.Millisecond })
 	if len(f.calls) != 0 || b.Status().Configured {
 		t.Errorf("без токена: вызовы %v, состояние %+v", f.calls, b.Status())
+	}
+}
+
+// Telegram сказал «слишком часто» — бот ждёт, сколько сказали: ни второму получателю,
+// ни после ответа на сообщение «Табло» не ставит, а на странице видно, до какого времени пауза
+func TestTooManyRequests(t *testing.T) {
+	f := &fakeTelegram{tooMany: "setChatMenuButton", updates: []map[string]any{msg(1, 111, "private", "/status")}}
+	log.SetOutput(io.Discard)
+	b := startBot(t, f, Config{Token: token, Users: []int64{111, 222}, Page: "https://x/", Period: 10},
+		func() bool { return len(f.sent) > 0 })
+	if len(f.menus) != 1 {
+		t.Errorf("после «Too Many Requests» бот ещё %d раз ставил «Табло»", len(f.menus)-1)
+	}
+	if st := b.Status(); !strings.Contains(st.Err, "не так часто") || !strings.Contains(st.Err, "2m42s") {
+		t.Errorf("состояние: %+v", st)
+	}
+	if len(f.sent) != 1 {
+		t.Errorf("ответ на /status всё равно должен прийти: %+v", f.sent)
 	}
 }

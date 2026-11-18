@@ -80,11 +80,11 @@ var tgHowNames = map[string]string{
 }
 
 func tgPeriodName(sec int) string {
-	switch sec {
-	case 60:
+	switch {
+	case sec == 60:
 		return "раз в минуту"
-	case 300:
-		return "раз в 5 мин"
+	case sec%60 == 0:
+		return "раз в " + strconv.Itoa(sec/60) + " мин"
 	default:
 		return "каждые " + strconv.Itoa(sec) + " с"
 	}

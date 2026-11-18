@@ -239,13 +239,20 @@ func TestTGPeriod(t *testing.T) {
 	if p, _ := st.TGPeriod(ctx); p != 60 {
 		t.Errorf("по умолчанию: %d", p)
 	}
-	if err := st.SetTGPeriod(ctx, "тест", 30); err != nil {
+	if err := st.SetTGPeriod(ctx, "тест", 120); err != nil {
 		t.Fatal(err)
 	}
-	if p, _ := st.TGPeriod(ctx); p != 30 {
+	if p, _ := st.TGPeriod(ctx); p != 120 {
 		t.Errorf("после установки: %d", p)
 	}
-	if err := st.SetTGPeriod(ctx, "тест", 45); !errors.Is(err, ErrTGPeriod) {
-		t.Errorf("45 с: %v", err)
+	for _, bad := range []int{10, 30, 45} { // чаще минуты Telegram не даёт
+		if err := st.SetTGPeriod(ctx, "тест", bad); !errors.Is(err, ErrTGPeriod) {
+			t.Errorf("%d с: %v", bad, err)
+		}
+	}
+	// Старое значение 10 с из базы (до этого исправления) читается как минута
+	st.SetSetting(ctx, "тест", tgPeriodKey, "10", "")
+	if p, _ := st.TGPeriod(ctx); p != 60 {
+		t.Errorf("старые 10 с: %d", p)
 	}
 }

@@ -89,10 +89,10 @@ func TestTGList(t *testing.T) {
 	if i < 0 || j < i || k < j || !strings.Contains(b[k:], "Пресс") || !strings.Contains(b, "выключен") {
 		t.Fatalf("список станков:\n%s", b)
 	}
-	if w := tgDo(h, "POST", "/telegram/period", url.Values{"period": {"30"}}, false); w.Code != http.StatusSeeOther {
+	if w := tgDo(h, "POST", "/telegram/period", url.Values{"period": {"120"}}, false); w.Code != http.StatusSeeOther {
 		t.Fatalf("период: %d", w.Code)
 	}
-	if p, _ := st.TGPeriod(context.Background()); p != 30 {
+	if p, _ := st.TGPeriod(context.Background()); p != 120 {
 		t.Errorf("период в базе: %d", p)
 	}
 	if w := tgDo(h, "POST", "/telegram/period", url.Values{"period": {"45"}}, false); w.Code != http.StatusBadRequest ||

@@ -113,8 +113,10 @@ var TGColors = []string{"blue", "steel", "green", "orange", "purple"}
 // TGHows — как показывать сигнал: текущее · текущее + мин/макс · с подписью из справочника
 var TGHows = []string{"value", "minmax", "dict"}
 
-// TGPeriods — период отправки сводки, с; по умолчанию — минута
-var TGPeriods = []int{10, 30, 60, 300}
+// TGPeriods — как часто бот обновляет «Табло», с; по умолчанию — минута.
+// Чаще минуты нельзя: Telegram ограничивает setChatMenuButton (на 10 с отвечал
+// «Too Many Requests: retry after 162»). Старые 10 и 30 с из базы читаются как минута.
+var TGPeriods = []int{60, 120, 300, 600}
 
 const (
 	tgPeriodKey     = "tg_period"
@@ -126,7 +128,7 @@ var (
 	ErrTGName   = fmt.Errorf("название — от 1 до %d символов", TGNameMax)
 	ErrTGColor  = errors.New("такого цвета нет (красный и жёлтый — только для аварий и предупреждений)")
 	ErrTGHow    = errors.New("неизвестный способ показа сигнала")
-	ErrTGPeriod = errors.New("период — 10 с, 30 с, 1 мин или 5 мин")
+	ErrTGPeriod = errors.New("период — 1, 2, 5 или 10 мин")
 	ErrTGSignal = errors.New("сигнал другого ПЛК или не найден")
 	ErrTGBit    = errors.New("состояние «по биту» — только по сигналу BOOL этого ПЛК")
 	ErrTGCodes  = errors.New("значения режима — только у состояния «по коду»")
