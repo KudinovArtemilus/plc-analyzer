@@ -264,3 +264,40 @@ func TestNotes(t *testing.T) {
 		t.Errorf("без сети уведомление пропало")
 	}
 }
+
+// Итог смены — той же очередью, без звука, всем получателям
+func TestReport(t *testing.T) {
+	f := &fakeTelegram{}
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+	given := false
+	b := New(Deps{API: srv.URL, Idle: 10 * time.Millisecond,
+		Load: func(context.Context) (Config, error) {
+			return Config{Token: token, Users: []int64{111}, Page: "https://x/", Period: 60}, nil
+		},
+		Summary: func(context.Context) (summary.Summary, error) { return demo, nil },
+		Report: func(context.Context) (string, error) {
+			if given {
+				return "", nil
+			}
+			given = true
+			return "📋 Итог: смена А", nil
+		}})
+	log.SetOutput(io.Discard)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { b.Run(ctx); close(done) }()
+	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		f.mu.Lock()
+		n := len(f.sent)
+		f.mu.Unlock()
+		if n > 0 {
+			break
+		}
+	}
+	cancel()
+	<-done
+	if len(f.sent) != 1 || f.sent[0]["text"] != "📋 Итог: смена А" || f.sent[0]["disable_notification"] != true {
+		t.Errorf("итог: %+v", f.sent)
+	}
+}

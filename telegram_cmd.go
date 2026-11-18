@@ -127,6 +127,7 @@ func startBot(ctx context.Context, st *store.Store, srv *web.Server) (done chan 
 		},
 		Summary: func(ctx context.Context) (summary.Summary, error) { return srv.TGSummary(ctx, time.Now()) },
 		Notes:   alarmNotes(st),
+		Report:  func(ctx context.Context) (string, error) { return srv.TGReport(ctx, time.Now()) },
 	})
 	srv.TGBot = bot.Status
 	done = make(chan struct{})

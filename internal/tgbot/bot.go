@@ -52,6 +52,7 @@ type Deps struct {
 	Load    func(ctx context.Context) (Config, error)
 	Summary func(ctx context.Context) (summary.Summary, error)
 	Notes   func(ctx context.Context) ([]Note, error) // уведомления об авариях (45d); nil — нет
+	Report  func(ctx context.Context) (string, error) // итог смены (45e): текст — один раз после конца смены
 	API     string                                    // "" — https://api.telegram.org (в тестах — свой сервер)
 	Idle    time.Duration                             // пауза, если бот не настроен или Telegram недоступен; 0 — 30 с
 }
@@ -150,6 +151,15 @@ func (b *Bot) Run(ctx context.Context) {
 				b.fail(fmt.Errorf("уведомления: %w", err))
 			}
 			b.outbox = append(b.outbox, notes...)
+		}
+		if b.d.Report != nil { // итог смены — той же очередью, без звука
+			if text, err := b.d.Report(ctx); err != nil {
+				b.fail(fmt.Errorf("итог смены: %w", err))
+			} else if text != "" {
+				b.outbox = append(b.outbox, Note{Text: text, Silent: true})
+			}
+		}
+		if len(b.outbox) > 0 {
 			b.sendNotes(ctx, cfg)
 		}
 

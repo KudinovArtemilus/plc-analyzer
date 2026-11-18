@@ -79,6 +79,21 @@
     {{end}}
     {{end}}
     
+    <form method="post" action="/telegram/report" class="panel-form" id="report">
+        <label><input type="checkbox" name="on" {{if .Report}}checked{{end}} onchange="this.form.submit()">
+            <b>Итог смены в 08:00 и 20:00</b></label>
+        <small class="muted">— одним сообщением всем получателям: доли смены и аварии по каждому станку с «показывать».
+            {{if .Report}}{{if eq .ReportLast "now"}}Итог прошлой смены уйдёт в ближайшие секунды.
+            {{else if .ReportLast}}Последний: {{.ReportLast}}.{{end}}{{end}}</small>
+        <noscript><button>Сохранить</button></noscript>
+    </form>
+    {{if .Report}}
+    <form method="post" action="/telegram/report/now" class="panel-form">
+        <button>Прислать итог прошлой смены сейчас</button>
+        <small class="muted">— чтобы проверить, как он выглядит, не дожидаясь конца смены</small>
+    </form>
+    {{end}}
+
     <h4 class="tg-sec" id="bot">Бот</h4>
     {{with .Bot}}
     {{if not .Configured}}

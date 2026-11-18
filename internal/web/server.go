@@ -202,6 +202,8 @@ func (s *Server) Handler() http.Handler {
 	// Telegram: что видно на телефоне (telegram_page.go). Только настройки — наружу пока ничего
 	mux.HandleFunc("GET /telegram", s.tgPage)
 	mux.HandleFunc("POST /telegram/period", s.tgPeriodSave)
+	mux.HandleFunc("POST /telegram/report", s.tgReportSave)       // итог смены (tg_report.go)
+	mux.HandleFunc("POST /telegram/report/now", s.tgReportNow)    // прислать итог прошлой смены сейчас
 	mux.HandleFunc("GET /telegram/summary.json", s.tgSummaryJSON) // ровно то, что уйдёт (tg_summary.go)
 	mux.HandleFunc("GET /telegram/{plc}", s.tgMachinePage)
 	mux.HandleFunc("POST /telegram/{plc}", s.tgMachineSave)

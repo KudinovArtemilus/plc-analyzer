@@ -79,29 +79,38 @@ func (s *Server) tgSummary(ctx context.Context, now time.Time) (summary.Summary,
 	return out, nil
 }
 
+// tgRules — состояния станка для расчёта: имя сигнала режима и правила (свои состояния,
+// «Авария», «Нет связи»). Общие для карточки «сейчас» и итога смены (45e).
+func (s *Server) tgRules(ctx context.Context, plcID int64, m store.TGMachine) (string, summary.Rules, error) {
+	rules := summary.Rules{Alarm: m.AlarmState, Offline: m.OfflineState}
+	states, err := s.Store.TGStates(ctx, plcID)
+	if err != nil {
+		return "", rules, err
+	}
+	all, err := s.Store.Signals(ctx, plcID)
+	if err != nil {
+		return "", rules, err
+	}
+	nameOf := map[int64]string{}
+	for _, sg := range all {
+		nameOf[sg.ID] = sg.Name
+	}
+	for _, st := range states {
+		rules.States = append(rules.States, summary.Rule{Name: st.Name, Color: st.Color, Pct: st.Pct,
+			Codes: st.Codes, Bit: nameOf[st.BitSignalID]})
+	}
+	return nameOf[m.ModeSignalID], rules, nil
+}
+
 // tgMachineSummary — карточка одного станка
 func (s *Server) tgMachineSummary(ctx context.Context, pl store.PLC, m store.TGMachine, now time.Time) (summary.Machine, error) {
 	mc := summary.Machine{Name: pl.Name}
 	if m.Label != "" {
 		mc.Name = m.Label
 	}
-	states, err := s.Store.TGStates(ctx, pl.ID)
+	mode, rules, err := s.tgRules(ctx, pl.ID, m)
 	if err != nil {
 		return mc, err
-	}
-	all, err := s.Store.Signals(ctx, pl.ID)
-	if err != nil {
-		return mc, err
-	}
-	nameOf := map[int64]string{}
-	for _, sg := range all {
-		nameOf[sg.ID] = sg.Name
-	}
-	mode := nameOf[m.ModeSignalID]
-	rules := summary.Rules{Alarm: m.AlarmState, Offline: m.OfflineState}
-	for _, st := range states {
-		rules.States = append(rules.States, summary.Rule{Name: st.Name, Color: st.Color, Pct: st.Pct,
-			Codes: st.Codes, Bit: nameOf[st.BitSignalID]})
 	}
 
 	// Сейчас: связь, аварии, режим и биты — из буфера Live
@@ -225,7 +234,11 @@ func (s *Server) tgActiveAlarms(ctx context.Context, plcID int64, now time.Time)
 // перезапуска их несколько), из каждого — только сигнал режима и биты состояний.
 // Время без записи — «нет связи»: что тогда было со станком, мы не знаем.
 func (s *Server) tgShift(ctx context.Context, pl store.PLC, mode string, rules summary.Rules, now time.Time) (*summary.Shift, error) {
-	sh := archive.ShiftOf(now)
+	return s.tgShiftOf(ctx, pl, mode, rules, archive.ShiftOf(now), now)
+}
+
+// tgShiftOf — доли смены sh от её начала до момента to (для итога смены — до конца смены)
+func (s *Server) tgShiftOf(ctx context.Context, pl store.PLC, mode string, rules summary.Rules, sh archive.Shift, now time.Time) (*summary.Shift, error) {
 	name := "А"
 	if sh.Name == "B" {
 		name = "Б"

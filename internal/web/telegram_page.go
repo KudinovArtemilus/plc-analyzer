@@ -24,11 +24,13 @@ import (
 
 // tgListView — первая страница: период и станки по участкам
 type tgListView struct {
-	Period  int
-	Areas   []tgAreaView
-	Err     string
-	Preview tgPreview
-	Bot     *tgbot.Status // бот (45b); nil — бот не запущен (тесты, старый main)
+	Period     int
+	Areas      []tgAreaView
+	Err        string
+	Preview    tgPreview
+	Report     bool          // присылать итог смены (45e)
+	ReportLast string        // за какую смену итог уже ушёл: «2026-11-18 A», "now" — сейчас уйдёт
+	Bot        *tgbot.Status // бот (45b); nil — бот не запущен (тесты, старый main)
 }
 
 type tgAreaView struct {
@@ -135,6 +137,9 @@ func (s *Server) tgList(r *http.Request) (tgListView, error) {
 	var v tgListView
 	var err error
 	if v.Period, err = s.Store.TGPeriod(ctx); err != nil {
+		return v, err
+	}
+	if v.Report, v.ReportLast, err = s.Store.TGReport(ctx); err != nil {
 		return v, err
 	}
 	areas, err := s.Store.Areas(ctx)
