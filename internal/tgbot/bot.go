@@ -143,7 +143,7 @@ func (b *Bot) Run(ctx context.Context) {
 			log.Printf("telegram: бот @%s на связи, получателей %d", me.Username, len(cfg.Users))
 		}
 
-		// Уведомления об авариях — каждый круг (не реже 5 с), не дожидаясь «Табло»
+		// Уведомления об авариях — каждый круг (не реже 2 с), не дожидаясь «Табло»
 		if b.d.Notes != nil {
 			notes, err := b.d.Notes(ctx)
 			if err != nil {
@@ -165,7 +165,7 @@ func (b *Bot) Run(ctx context.Context) {
 		}
 
 		// Ждём сообщений до следующего обновления «Табло» (Telegram держит запрос открытым)
-		// Не дольше 5 с: за это время может прийти авария, о которой надо сообщить
+		// Не дольше 2 с: за это время может прийти авария, о которой надо сообщить
 		wait := min(max(time.Until(next), time.Second), NoteEvery)
 		offset, err = b.poll(ctx, cfg, offset, wait)
 		if err != nil && ctx.Err() == nil { // остановка программы — не ошибка бота
@@ -183,7 +183,7 @@ type Note struct {
 }
 
 // NoteEvery — как часто бот проверяет журнал аварий
-const NoteEvery = 5 * time.Second
+const NoteEvery = 2 * time.Second
 
 // OutboxMax — больше уведомлений не копим (Telegram долго недоступен): старые выбрасываем
 const OutboxMax = 50

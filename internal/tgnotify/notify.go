@@ -8,7 +8,9 @@
 //   - только аварии (не предупреждения), только станки с «показывать» и «уведомлять»;
 //   - зашунтированная авария молчит (шунт и ставят, чтобы она не мешала);
 //   - после запуска — только новые: старые аварии из журнала не присылаются;
-//   - лавина: по станку не чаще раза в минуту; всё, что пришло за это время, — одним сообщением.
+//   - сообщения уходят сразу (проверка журнала — каждые 2 с); всё, что пришло между проверками,
+//     — одним сообщением;
+//   - лавина: по станку не больше Burst сообщений в минуту, дальше копится и уходит одним.
 package tgnotify
 
 import (
@@ -27,8 +29,13 @@ type Note struct {
 	Silent bool // без звука: в сообщении только «ушла»
 }
 
-// Cooldown — по одному станку не чаще одного сообщения за это время
-const Cooldown = time.Minute
+// Burst — сколько сообщений по одному станку можно за Window; дальше — копим до конца окна.
+// Обычная авария (пришла, ушла) — 2 сообщения, обе приходят сразу. Раньше была пауза
+// в минуту после каждого сообщения, и «ушла» на пробах опаздывала до минуты.
+const (
+	Burst  = 3
+	Window = time.Minute
+)
 
 // ListMax — сколько аварий перечислять в одном сообщении; остальные — «и ещё N»
 const ListMax = 10
@@ -41,15 +48,15 @@ type pending struct {
 // Watcher — помнит, что уже объявлено. Один на программу; вызывается из горутины бота.
 type Watcher struct {
 	st        *store.Store
-	lastID    int64               // последняя запись журнала, которую уже видели
-	announced map[int64]int64     // объявленные активные аварии: номер записи → ПЛК
-	pending   map[int64]*pending  // ждут конца паузы по станку
-	lastSent  map[int64]time.Time // когда по станку было последнее сообщение
+	lastID    int64                 // последняя запись журнала, которую уже видели
+	announced map[int64]int64       // объявленные активные аварии: номер записи → ПЛК
+	pending   map[int64]*pending    // ждут конца паузы по станку
+	lastSent  map[int64][]time.Time // когда по станку были сообщения за последнюю минуту
 	started   bool
 }
 
 func New(st *store.Store) *Watcher {
-	return &Watcher{st: st, announced: map[int64]int64{}, pending: map[int64]*pending{}, lastSent: map[int64]time.Time{}}
+	return &Watcher{st: st, announced: map[int64]int64{}, pending: map[int64]*pending{}, lastSent: map[int64][]time.Time{}}
 }
 
 // Notes — что отправить сейчас
@@ -139,8 +146,15 @@ func (w *Watcher) Notes(ctx context.Context, now time.Time) ([]Note, error) {
 	var out []Note
 	for _, id := range plcs {
 		p := w.pending[id]
-		if now.Sub(w.lastSent[id]) < Cooldown {
-			continue // ещё пауза — копим
+		recent := w.lastSent[id][:0:0]
+		for _, t := range w.lastSent[id] {
+			if now.Sub(t) < Window {
+				recent = append(recent, t)
+			}
+		}
+		w.lastSent[id] = recent
+		if len(recent) >= Burst {
+			continue // лавина — копим до конца окна
 		}
 		m, ok := notify(id)
 		if !ok { // галочку сняли, пока копили
@@ -154,7 +168,7 @@ func (w *Watcher) Notes(ctx context.Context, now time.Time) ([]Note, error) {
 			}
 		}
 		out = append(out, Format(name, p.came, p.went))
-		w.lastSent[id] = now
+		w.lastSent[id] = append(w.lastSent[id], now)
 		delete(w.pending, id)
 	}
 	return out, nil

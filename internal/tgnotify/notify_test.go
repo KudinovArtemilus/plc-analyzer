@@ -58,29 +58,32 @@ func TestNotes(t *testing.T) {
 		t.Fatalf("пришла: %v\n%s", err, texts(n))
 	}
 
-	// Через 20 с — лавина из 12 аварий: пауза по станку, копим
+	// Через 20 с — 12 аварий разом: одно сообщение, сразу (второе по станку за минуту)
 	var lav []store.EventEdge
 	for i := 1; i <= 12; i++ {
 		lav = append(lav, edge(fmt.Sprintf("A%d", i), fmt.Sprintf("Авария %d", i), true, t0.Add(20*time.Second)))
 	}
 	st.SaveEdges(ctx, p1, lav)
-	if n, _ := w.Notes(ctx, t0.Add(21*time.Second)); len(n) != 0 {
-		t.Errorf("в паузу ничего не шлём: %s", texts(n))
-	}
-	// Дверь закрыли через 3 мин 10 с
-	st.SaveEdges(ctx, p1, []store.EventEdge{edge("Дверь", "Дверь открыта", false, t0.Add(190*time.Second))})
-	n, _ = w.Notes(ctx, t0.Add(191*time.Second)) // пауза прошла — всё одним сообщением
+	n, _ = w.Notes(ctx, t0.Add(21*time.Second))
 	got := texts(n)
-	if len(n) != 1 || !strings.HasPrefix(got, "[false] 🔴 Шлифовка: аварий — 12\n■ Авария 1 — 09:58") ||
-		!strings.Contains(got, "… и ещё 2") || !strings.Contains(got, "✅ ушла: Дверь открыта — длилась 3 мин") {
-		t.Errorf("лавина:\n%s", got)
+	if len(n) != 1 || !strings.HasPrefix(got, "[false] 🔴 Шлифовка: аварий — 12\n■ Авария 1 — 09:58") || !strings.Contains(got, "… и ещё 2") {
+		t.Errorf("12 разом:\n%s", got)
 	}
-
-	// Ещё через минуту ушла одна из лавины — тихое сообщение
-	st.SaveEdges(ctx, p1, []store.EventEdge{edge("A1", "Авария 1", false, t0.Add(260*time.Second))})
-	n, _ = w.Notes(ctx, t0.Add(260*time.Second))
-	if texts(n) != "[true] Шлифовка\n✅ ушла: Авария 1 — длилась 4 мин" {
+	// Дверь закрыли через 25 с — «ушла» приходит сразу, без звука (третье за минуту — ещё можно)
+	st.SaveEdges(ctx, p1, []store.EventEdge{edge("Дверь", "Дверь открыта", false, t0.Add(25*time.Second))})
+	n, _ = w.Notes(ctx, t0.Add(26*time.Second))
+	if texts(n) != "[true] Шлифовка\n✅ ушла: Дверь открыта — длилась меньше минуты" {
 		t.Errorf("ушла:\n%s", texts(n))
+	}
+	// Четвёртое за минуту — лавина: копится до конца окна (минута от первого сообщения)
+	st.SaveEdges(ctx, p1, []store.EventEdge{edge("A1", "Авария 1", false, t0.Add(30*time.Second))})
+	if n, _ := w.Notes(ctx, t0.Add(31*time.Second)); len(n) != 0 {
+		t.Errorf("четвёртое за минуту ушло сразу: %s", texts(n))
+	}
+	st.SaveEdges(ctx, p1, []store.EventEdge{edge("A2", "Авария 2", false, t0.Add(40*time.Second))})
+	n, _ = w.Notes(ctx, t0.Add(62*time.Second))
+	if texts(n) != "[true] Шлифовка\n✅ ушла: Авария 1 — длилась меньше минуты\n✅ ушла: Авария 2 — длилась меньше минуты" {
+		t.Errorf("после окна:\n%s", texts(n))
 	}
 }
 
