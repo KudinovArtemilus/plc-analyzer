@@ -114,12 +114,12 @@ func TestTGMachineSave(t *testing.T) {
 		t.Error("REAL в списке сигналов режима")
 	}
 	w := tgDo(h, "POST", page, url.Values{"on": {"on"}, "label": {"Шлифовка"}, "mode": {itoa(sig["Режим"])},
-		"show_state": {"on"}, "show_bar": {"on"}, "alarm": {"on"}}, false)
+		"show_state": {"on"}, "show_bar": {"on"}, "alarm": {"on"}, "notify": {"on"}}, false)
 	if w.Code != http.StatusSeeOther || !strings.HasSuffix(w.Header().Get("Location"), "#machine") {
 		t.Fatalf("сохранение: %d %s", w.Code, w.Body.String())
 	}
 	m, _ := st.TGMachine(context.Background(), p1)
-	if !m.Enabled || m.Label != "Шлифовка" || m.ModeSignalID != sig["Режим"] || !m.Show.Bar || m.Show.Step || m.OfflineState {
+	if !m.Enabled || m.Label != "Шлифовка" || m.ModeSignalID != sig["Режим"] || !m.Show.Bar || m.Show.Step || m.OfflineState || !m.Notify {
 		t.Errorf("в базе: %+v", m)
 	}
 	if b := tgDo(h, "GET", page, nil, false).Body.String(); strings.Contains(b, "предложен из настройки паспорта") {

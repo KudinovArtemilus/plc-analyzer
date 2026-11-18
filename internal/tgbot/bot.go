@@ -51,8 +51,9 @@ type Config struct {
 type Deps struct {
 	Load    func(ctx context.Context) (Config, error)
 	Summary func(ctx context.Context) (summary.Summary, error)
-	API     string        // "" — https://api.telegram.org (в тестах — свой сервер)
-	Idle    time.Duration // пауза, если бот не настроен или Telegram недоступен; 0 — 30 с
+	Notes   func(ctx context.Context) ([]Note, error) // уведомления об авариях (45d); nil — нет
+	API     string                                    // "" — https://api.telegram.org (в тестах — свой сервер)
+	Idle    time.Duration                             // пауза, если бот не настроен или Telegram недоступен; 0 — 30 с
 }
 
 // Status — для страницы «Telegram»: что с ботом. Токена здесь нет.
@@ -75,6 +76,8 @@ type Bot struct {
 
 	token     string    // для какого токена узнали имя бота
 	holdUntil time.Time // Telegram попросил подождать («Too Many Requests») — до этого времени «Табло» не трогаем
+	noteHold  time.Time // то же для уведомлений
+	outbox    []Note    // уведомления, которые ещё не ушли (Telegram недоступен или просил подождать)
 	strangers map[int64]bool
 }
 
@@ -140,6 +143,16 @@ func (b *Bot) Run(ctx context.Context) {
 			log.Printf("telegram: бот @%s на связи, получателей %d", me.Username, len(cfg.Users))
 		}
 
+		// Уведомления об авариях — каждый круг (не реже 5 с), не дожидаясь «Табло»
+		if b.d.Notes != nil {
+			notes, err := b.d.Notes(ctx)
+			if err != nil {
+				b.fail(fmt.Errorf("уведомления: %w", err))
+			}
+			b.outbox = append(b.outbox, notes...)
+			b.sendNotes(ctx, cfg)
+		}
+
 		// Сводка читает файлы смены — собираем её, только когда она нужна:
 		// пора обновить «Табло» или кто-то из получателей написал
 		if !time.Now().Before(next) {
@@ -152,7 +165,8 @@ func (b *Bot) Run(ctx context.Context) {
 		}
 
 		// Ждём сообщений до следующего обновления «Табло» (Telegram держит запрос открытым)
-		wait := min(max(time.Until(next), time.Second), 25*time.Second)
+		// Не дольше 5 с: за это время может прийти авария, о которой надо сообщить
+		wait := min(max(time.Until(next), time.Second), NoteEvery)
 		offset, err = b.poll(ctx, cfg, offset, wait)
 		if err != nil && ctx.Err() == nil { // остановка программы — не ошибка бота
 			b.fail(err)
@@ -162,6 +176,50 @@ func (b *Bot) Run(ctx context.Context) {
 }
 
 // push — каждому получателю кнопка меню «Табло» со сводкой в ссылке
+// Note — уведомление: текст и «без звука»
+type Note struct {
+	Text   string
+	Silent bool
+}
+
+// NoteEvery — как часто бот проверяет журнал аварий
+const NoteEvery = 5 * time.Second
+
+// OutboxMax — больше уведомлений не копим (Telegram долго недоступен): старые выбрасываем
+const OutboxMax = 50
+
+// sendNotes — разослать накопленные уведомления всем получателям.
+// Не ушло (нет сети, «подождите») — останется в очереди до следующего круга.
+func (b *Bot) sendNotes(ctx context.Context, cfg Config) {
+	if len(b.outbox) > OutboxMax {
+		b.outbox = b.outbox[len(b.outbox)-OutboxMax:]
+	}
+	for len(b.outbox) > 0 && !time.Now().Before(b.noteHold) {
+		n := b.outbox[0]
+		sent := 0
+		for _, u := range cfg.Users {
+			err := b.call(ctx, cfg.Token, "sendMessage", map[string]any{
+				"chat_id": u, "text": n.Text, "disable_notification": n.Silent}, nil)
+			var tm *TooManyError
+			switch {
+			case err == nil:
+				sent++
+			case errors.As(err, &tm):
+				b.noteHold = time.Now().Add(tm.After + time.Second)
+				b.fail(fmt.Errorf("уведомление: %w", err))
+				return // это и следующие — позже (кто-то из получателей может получить дважды)
+			case ctx.Err() == nil:
+				b.fail(fmt.Errorf("уведомление для %d: %w", u, err)) // например, не нажал /start
+			}
+			sleep(ctx, 50*time.Millisecond) // не чаще ~20 сообщений в секунду на бота
+		}
+		if sent == 0 && len(cfg.Users) > 0 {
+			return // не ушло никому (нет сети?) — попробуем на следующем круге
+		}
+		b.outbox = b.outbox[1:]
+	}
+}
+
 func (b *Bot) push(ctx context.Context, cfg Config, sum summary.Summary) {
 	if time.Now().Before(b.holdUntil) {
 		return // Telegram просил подождать — не злим его ещё сильнее

@@ -67,7 +67,7 @@
             {{range .Machines}}
             <tr class="{{if not .M.Enabled}}tg-off{{end}}">
                 <td><b>{{.PLC.Name}}</b></td>
-                <td>{{if .M.Enabled}}показывать{{else}}выключен{{end}}</td>
+                <td>{{if .M.Enabled}}показывать{{if .M.Notify}} · уведомлять{{end}}{{else}}выключен{{end}}</td>
                 <td>{{if .M.Label}}{{.M.Label}}{{else}}<span class="muted">{{.PLC.Name}}</span>{{end}}</td>
                 <td class="mono">{{.States}}</td>
                 <td class="mono">{{.Signals}}</td>
@@ -148,6 +148,10 @@
                     style="background:var(--alarm)"></span>Авария (важнее режима)</label>
             <label><input type="checkbox" name="offline" {{if .M.OfflineState}}checked{{end}}> Нет связи</label>
         </p>
+        <p><label><input type="checkbox" name="notify" {{if .M.Notify}}checked{{end}}> <b>уведомлять об авариях</b></label>
+            <small class="muted">— сразу сообщением всем получателям: пришла — со звуком, ушла — тихо.
+                Только аварии (не предупреждения), зашунтированные молчат; по станку — не чаще раза в минуту,
+                лавина — одним сообщением.</small></p>
         <button>Сохранить</button>
     </form>
 

@@ -344,6 +344,7 @@ func (s *Server) tgMachineSave(w http.ResponseWriter, r *http.Request) {
 			Bar: checked(r, "show_bar"), Signals: checked(r, "show_signals"), Alarms: checked(r, "show_alarms")},
 		AlarmState:   checked(r, "alarm"),
 		OfflineState: checked(r, "offline"),
+		Notify:       checked(r, "notify"),
 	}
 	s.tgDone(w, r, s.Store.SaveTGMachine(r.Context(), who(r), m), "machine")
 }

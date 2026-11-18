@@ -213,3 +213,54 @@ func TestTooManyRequests(t *testing.T) {
 		t.Errorf("ответ на /status всё равно должен прийти: %+v", f.sent)
 	}
 }
+
+// Уведомления: всем получателям, «ушла» — без звука; не ушло никому — остаётся в очереди
+func TestNotes(t *testing.T) {
+	f := &fakeTelegram{}
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+	calls := 0
+	b := New(Deps{API: srv.URL, Idle: 10 * time.Millisecond,
+		Load: func(context.Context) (Config, error) {
+			return Config{Token: token, Users: []int64{111, 222}, Page: "https://x/", Period: 60}, nil
+		},
+		Summary: func(context.Context) (summary.Summary, error) { return demo, nil },
+		Notes: func(context.Context) ([]Note, error) {
+			calls++
+			if calls == 1 {
+				return []Note{{Text: "🔴 Шлифовка: Дверь открыта — 09:58"}, {Text: "Шлифовка\n✅ ушла: Дверь открыта", Silent: true}}, nil
+			}
+			return nil, nil
+		}})
+	log.SetOutput(io.Discard)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { b.Run(ctx); close(done) }()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		f.mu.Lock()
+		n := len(f.sent)
+		f.mu.Unlock()
+		if n >= 4 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	<-done
+	if len(f.sent) != 4 {
+		t.Fatalf("сообщений %d: %+v", len(f.sent), f.sent)
+	}
+	if f.sent[0]["disable_notification"] != false || f.sent[2]["disable_notification"] != true ||
+		f.sent[1]["chat_id"].(float64) != 222 {
+		t.Errorf("звук и получатели: %+v", f.sent)
+	}
+
+	// Telegram недоступен — уведомление не теряется
+	bad := New(Deps{API: "http://127.0.0.1:1"})
+	bad.outbox = []Note{{Text: "авария"}}
+	bad.sendNotes(context.Background(), Config{Token: token, Users: []int64{111}})
+	if len(bad.outbox) != 1 {
+		t.Errorf("без сети уведомление пропало")
+	}
+}

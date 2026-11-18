@@ -179,6 +179,9 @@ var migrations = []string{
 
 	// 13: настройки Telegram-табло: станки, состояния, значения режима, сигналы (telegram.go)
 	telegramSchema,
+
+	// 14: уведомления об авариях в Telegram — галочка у станка (tg_notify.go)
+	tgNotifySchema,
 }
 
 func Open(path string) (*Store, error) {

@@ -12,6 +12,7 @@ import (
 	"github.com/KudinovArtemilus/plc-analyzer/internal/store"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/summary"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/tgbot"
+	"github.com/KudinovArtemilus/plc-analyzer/internal/tgnotify"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/web"
 )
 
@@ -100,6 +101,19 @@ func usersText(u []int64) string {
 	return strings.Trim(fmt.Sprint(u), "[]")
 }
 
+// alarmNotes — уведомления об авариях (45d): журнал аварий → тексты для бота
+func alarmNotes(st *store.Store) func(context.Context) ([]tgbot.Note, error) {
+	w := tgnotify.New(st)
+	return func(ctx context.Context) ([]tgbot.Note, error) {
+		notes, err := w.Notes(ctx, time.Now())
+		out := make([]tgbot.Note, len(notes))
+		for i, n := range notes {
+			out[i] = tgbot.Note{Text: n.Text, Silent: n.Silent}
+		}
+		return out, err
+	}
+}
+
 // startBot — бот в фоне службы; закроет done, когда остановится
 func startBot(ctx context.Context, st *store.Store, srv *web.Server) (done chan struct{}) {
 	bot := tgbot.New(tgbot.Deps{
@@ -112,6 +126,7 @@ func startBot(ctx context.Context, st *store.Store, srv *web.Server) (done chan 
 			return tgbot.Config{Token: c.Token, Users: c.Users, Page: c.Page, Period: p}, err
 		},
 		Summary: func(ctx context.Context) (summary.Summary, error) { return srv.TGSummary(ctx, time.Now()) },
+		Notes:   alarmNotes(st),
 	})
 	srv.TGBot = bot.Status
 	done = make(chan struct{})

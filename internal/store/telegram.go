@@ -81,6 +81,7 @@ type TGMachine struct {
 	Show         TGShow
 	AlarmState   bool // встроенное состояние «Авария»
 	OfflineState bool // встроенное состояние «Нет связи»
+	Notify       bool // сообщать об авариях сразу (45d, миграция 14); по умолчанию — нет
 }
 
 // TGState — состояние станка: «Автомат», «Ручной»…
@@ -182,9 +183,9 @@ func (s *Store) signalOf(ctx context.Context, q interface {
 func (s *Store) TGMachine(ctx context.Context, plcID int64) (TGMachine, error) {
 	m := TGMachine{PLCID: plcID, Show: TGShow{true, true, true, true, true}, AlarmState: true, OfflineState: true}
 	err := s.db.QueryRowContext(ctx, `SELECT enabled, label, COALESCE(mode_signal_id, 0),
-		show_state, show_step, show_bar, show_signals, show_alarms, alarm_state, offline_state
+		show_state, show_step, show_bar, show_signals, show_alarms, alarm_state, offline_state, notify
 		FROM tg_machines WHERE plc_id = ?`, plcID).Scan(&m.Enabled, &m.Label, &m.ModeSignalID,
-		&m.Show.State, &m.Show.Step, &m.Show.Bar, &m.Show.Signals, &m.Show.Alarms, &m.AlarmState, &m.OfflineState)
+		&m.Show.State, &m.Show.Step, &m.Show.Bar, &m.Show.Signals, &m.Show.Alarms, &m.AlarmState, &m.OfflineState, &m.Notify)
 	if errors.Is(err, sql.ErrNoRows) {
 		return m, nil
 	}
@@ -208,14 +209,14 @@ func (s *Store) SaveTGMachine(ctx context.Context, who string, m TGMachine) erro
 		}
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO tg_machines (plc_id, enabled, label, mode_signal_id,
-		show_state, show_step, show_bar, show_signals, show_alarms, alarm_state, offline_state)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		show_state, show_step, show_bar, show_signals, show_alarms, alarm_state, offline_state, notify)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (plc_id) DO UPDATE SET enabled = excluded.enabled, label = excluded.label,
 		mode_signal_id = excluded.mode_signal_id, show_state = excluded.show_state,
 		show_step = excluded.show_step, show_bar = excluded.show_bar, show_signals = excluded.show_signals,
-		show_alarms = excluded.show_alarms, alarm_state = excluded.alarm_state, offline_state = excluded.offline_state`,
+		show_alarms = excluded.show_alarms, alarm_state = excluded.alarm_state, offline_state = excluded.offline_state, notify = excluded.notify`,
 		m.PLCID, m.Enabled, label, idRef(m.ModeSignalID), m.Show.State, m.Show.Step, m.Show.Bar,
-		m.Show.Signals, m.Show.Alarms, m.AlarmState, m.OfflineState); err != nil {
+		m.Show.Signals, m.Show.Alarms, m.AlarmState, m.OfflineState, m.Notify); err != nil {
 		return err
 	}
 	on := "выключен"
