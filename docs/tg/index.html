@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ru">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Табло — PLC Analyzer</title>
+    <script>
+        // Сводка — в ссылке после # (её туда кладёт бот анализатора). Запомнить ДО скрипта Telegram.
+        window.FIRST_HASH = location.hash;
+    </script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg: var(--tg-theme-bg-color, #fff);
+            --text: var(--tg-theme-text-color, #1d2228);
+            --hint: var(--tg-theme-hint-color, #7d8590);
+            --card: var(--tg-theme-secondary-bg-color, #f2f3f5);
+        }
+        * { box-sizing: border-box; }
+        body { font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 12px 14px 24px;
+               background: var(--bg); color: var(--text); }
+        header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+        h1 { font-size: 19px; margin: 0; }
+        .hint { color: var(--hint); font-size: 13px; }
+        .stale { background: #f9a82522; border-left: 3px solid #f9a825; padding: 8px 10px; border-radius: 6px; margin: 8px 0; }
+        h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--hint); margin: 18px 0 6px; }
+        .card { background: var(--card); border-radius: 10px; padding: 10px 12px; margin: 8px 0;
+                border-left: 5px solid var(--c, #8a8f96); }
+        .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        .name { font-weight: 600; font-size: 16px; }
+        .pill { background: var(--c, #8a8f96); color: #fff; border-radius: 999px; padding: 2px 10px; font-size: 13px;
+                white-space: nowrap; }
+        .row { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; margin-top: 4px; }
+        .row .v { font-variant-numeric: tabular-nums; text-align: right; }
+        .bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: #8882; margin: 8px 0 4px; }
+        .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--hint); }
+        .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; }
+        .alarm { color: #c62828; font-size: 14px; margin-top: 4px; }
+        .empty { color: var(--hint); margin-top: 40px; text-align: center; }
+    </style>
+</head>
+
+<body>
+    <div id="app"></div>
+    <script>
+        const tg = window.Telegram && Telegram.WebApp;
+        if (tg) { tg.ready(); tg.expand(); }
+
+        // Цвета — как на странице «Telegram» анализатора (ISA-101: красный — только авария)
+        const COLORS = { blue: '#2F4A68', steel: '#9AA6B2', green: '#3F7D4E', orange: '#C2671B', purple: '#6B4E9B',
+                         red: '#C62828', gray: '#8A8F96' };
+        const color = c => COLORS[c] || COLORS.gray;
+
+        // el('div', {class: 'x'}, 'текст', child…) — без innerHTML: текст из сводки не станет разметкой
+        function el(tag, attrs, ...kids) {
+            const e = document.createElement(tag);
+            for (const [k, v] of Object.entries(attrs || {})) k === 'style' ? e.style.cssText = v : e.setAttribute(k, v);
+            for (const k of kids) if (k != null && k !== false) e.append(k);
+            return e;
+        }
+
+        function readSummary() {
+            const d = new URLSearchParams((window.FIRST_HASH || '').slice(1)).get('d');
+            if (!d) return null;
+            try {
+                const b64 = d.replace(/-/g, '+').replace(/_/g, '/');
+                const bin = atob(b64 + '='.repeat((4 - b64.length % 4) % 4));
+                const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+                return JSON.parse(new TextDecoder().decode(bytes));
+            } catch (e) { return { error: String(e) }; }
+        }
+
+        const fmt = x => String(x).replace('.', ',');
+
+        function machineCard(m) {
+            const st = m.state;
+            const card = el('div', { class: 'card', style: '--c:' + color(st ? st.color : 'gray') },
+                el('div', { class: 'top' },
+                    el('span', { class: 'name' }, m.name),
+                    st ? el('span', { class: 'pill' }, st.name) : (!m.online ? el('span', { class: 'pill' }, 'Нет связи') : null)));
+            if (m.step) card.append(el('div', { class: 'row' }, el('span', { class: 'hint' }, 'Шаг'), el('span', { class: 'v' }, m.step)));
+            if (m.shift && m.shift.shares && m.shift.shares.length) {
+                const bar = el('div', { class: 'bar' });
+                const legend = el('div', { class: 'legend' });
+                for (const s of m.shift.shares) {
+                    if (s.pct > 0) bar.append(el('span', { style: `width:${s.pct}%;background:${color(s.color)}` }));
+                    legend.append(el('span', {}, el('i', { style: 'background:' + color(s.color) }), `${s.name} ${fmt(s.pct)}%`));
+                }
+                card.append(el('div', { class: 'hint', style: 'margin-top:6px' }, `Смена ${m.shift.name} с ${m.shift.from}`), bar, legend);
+            }
+            for (const g of m.signals || []) {
+                let v = '—';
+                if (g.text) v = g.text;
+                else if (g.value != null) v = fmt(g.value) + (g.min != null ? `  (${fmt(g.min)}…${fmt(g.max)})` : '');
+                card.append(el('div', { class: 'row' }, el('span', {}, g.label), el('span', { class: 'v' }, v)));
+            }
+            for (const a of m.alarms || []) card.append(el('div', { class: 'alarm' }, `■ ${a.text} — с ${a.since}`));
+            return card;
+        }
+
+        function render() {
+            const app = document.getElementById('app');
+            const s = readSummary();
+            if (!s || s.error) {
+                app.append(el('div', { class: 'empty' }, s ? 'Сводка в ссылке испорчена.' :
+                    'Откройте табло кнопкой «Табло» в чате с ботом анализатора.'));
+                return;
+            }
+            const at = new Date(s.at);
+            const age = Math.max(0, Math.round((Date.now() - at) / 60000));
+            app.append(el('header', {}, el('h1', {}, 'Станки'),
+                el('span', { class: 'hint' }, `на ${at.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}` +
+                    (age >= 1 ? ` · ${age} мин назад` : ''))));
+            // Бот обновляет «Табло» раз в период; сильно старше — анализатор или его связь пропали
+            if (age * 60 > 3 * (s.period || 60) + 60) {
+                app.append(el('div', { class: 'stale' }, `Данные старые: ${age} мин. Анализатор не обновлял табло — ` +
+                    'возможно, он выключен или нет интернета. Закройте и откройте «Табло» ещё раз.'));
+            }
+            if (!s.areas || !s.areas.length) app.append(el('div', { class: 'empty' }, 'Ни один станок не отмечен для показа.'));
+            for (const a of s.areas || []) {
+                app.append(el('h2', {}, a.name));
+                for (const m of a.machines || []) app.append(machineCard(m));
+            }
+            app.append(el('p', { class: 'hint', style: 'margin-top:18px' },
+                'PLC Analyzer · © 2026 Артём Кудинов. Данные пришли в самой ссылке — сайт их не видит и не хранит.'));
+        }
+        render();
+    </script>
+</body>
+
+</html>

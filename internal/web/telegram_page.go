@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/KudinovArtemilus/plc-analyzer/internal/store"
+	"github.com/KudinovArtemilus/plc-analyzer/internal/tgbot"
 )
 
 // ---------- Страница «Telegram» (шаг 45a-3) ----------
@@ -27,6 +28,7 @@ type tgListView struct {
 	Areas   []tgAreaView
 	Err     string
 	Preview tgPreview
+	Bot     *tgbot.Status // бот (45b); nil — бот не запущен (тесты, старый main)
 }
 
 type tgAreaView struct {
@@ -120,6 +122,10 @@ func (s *Server) tgPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v.Preview = s.tgPreviewOf(r.Context())
+	if s.TGBot != nil {
+		st := s.TGBot()
+		v.Bot = &st
+	}
 	render(w, "telegram", v)
 }
 

@@ -140,6 +140,7 @@ func parseFlags(args []string) (options, error) {
   plc-analyzer.exe install [параметры]    — установить службу Windows с этими параметрами
   plc-analyzer.exe uninstall | start | stop | status
   plc-analyzer.exe password [off]         — пароль для просмотра с других ПК (off — убрать)
+  plc-analyzer.exe telegram [off]         — бот Telegram: токен и получатели (off — убрать токен)
 
 Параметры:`)
 		fs.PrintDefaults()
@@ -168,6 +169,13 @@ func parseFlags(args []string) (options, error) {
 // Вся работа анализатора — в run, одна и та же во всех режимах.
 func main() {
 	args := os.Args[1:]
+	if len(args) > 0 && args[0] == "telegram" { // бот Telegram (45b): токен и получатели
+		if err := telegramCmd(args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "ОШИБКА:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(args) > 0 && args[0] == "password" { // пароль для просмотра (37) — работает и без службы
 		if err := passwordCmd(args[1:]); err != nil {
 			fmt.Fprintln(os.Stderr, "ОШИБКА:", err)
@@ -316,6 +324,9 @@ func run(ctx context.Context, opt options) error {
 		runPassports(ctx, st, dataRoot)
 	}()
 
+	// Бот Telegram (45b) — в фоне; без токена молчит и в Telegram не ходит
+	botDone := startBot(ctx, st, srv)
+
 	hs := &http.Server{
 		Handler: srv.Handler(),
 		// Контекст каждого запроса — дочерний от ctx. При остановке он отменяется,
@@ -350,6 +361,7 @@ func run(ctx context.Context, opt options) error {
 			// Потом опрос и запись: файлы смен закрываются целыми
 			m.shutdownAll()
 			<-passportsDone // паспорт, который считается сейчас, — не дольше одного файла
+			<-botDone       // бот: прерывается его запрос к Telegram
 			log.Printf("остановлено за %v", time.Since(t0).Round(time.Millisecond))
 			return nil // база закроется в defer st.Close()
 		case <-reload:

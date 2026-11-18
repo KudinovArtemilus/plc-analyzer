@@ -19,6 +19,7 @@ import (
 	"github.com/KudinovArtemilus/plc-analyzer/internal/buffer"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/plc"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/store"
+	"github.com/KudinovArtemilus/plc-analyzer/internal/tgbot"
 )
 
 //go:embed static
@@ -61,6 +62,9 @@ type Server struct {
 	Scripts   string     // папка со скриптами trend.py, anomaly.py
 	exploreMu sync.Mutex // один анализ за раз
 	auth      sessions   // входы по паролю для просмотра (auth.go)
+
+	// TGBot — состояние бота Telegram для страницы «Telegram» (45b); nil — бота нет
+	TGBot func() tgbot.Status
 
 	// command — как запускать программу; nil — exec.CommandContext. В тестах подменяется.
 	command func(ctx context.Context, name string, args ...string) *exec.Cmd

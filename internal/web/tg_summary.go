@@ -27,6 +27,11 @@ import (
 // Наружу попадает только то, что описано типами пакета summary: подписи, значения, проценты.
 // IP, адреса сигналов, пути к файлам сюда не передаются вовсе — тест это проверяет.
 
+// TGSummary — сводка для бота Telegram (45b): то же, что «Что уйдёт наружу»
+func (s *Server) TGSummary(ctx context.Context, now time.Time) (summary.Summary, error) {
+	return s.tgSummary(ctx, now)
+}
+
 // tgSummary — сводка по всем станкам, у которых стоит «показывать»
 func (s *Server) tgSummary(ctx context.Context, now time.Time) (summary.Summary, error) {
 	out := summary.Summary{At: now.Format(time.RFC3339), Areas: []summary.Area{}}

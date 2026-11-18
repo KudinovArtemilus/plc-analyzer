@@ -14,6 +14,7 @@ import (
 	"github.com/KudinovArtemilus/plc-analyzer/internal/plc"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/store"
 	"github.com/KudinovArtemilus/plc-analyzer/internal/summary"
+	"github.com/KudinovArtemilus/plc-analyzer/internal/tgbot"
 )
 
 // Сейчас 10:00, смена А с 08:00 (120 мин). Запись станка: 08:00–09:00 режим 1 (Автомат),
@@ -211,3 +212,24 @@ func fmtShares(sh []summary.Share) string {
 func trimFloat(f float64) string { b, _ := json.Marshal(f); return string(b) }
 
 func mustJSON(v any) string { b, _ := json.Marshal(v); return string(b) }
+
+// Блок «Бот» на странице: не настроен — подсказка с командой; настроен — имя, получатели, ошибка
+func TestTGBotBlock(t *testing.T) {
+	s, _, _, _, _, _ := tgSummaryServer(t)
+	s.TGBot = func() tgbot.Status { return tgbot.Status{} }
+	b := tgDo(s.Handler(), "GET", "/telegram", nil, false).Body.String()
+	if !strings.Contains(b, "Бот не настроен") || !strings.Contains(b, "plc-analyzer.exe telegram") {
+		t.Errorf("не настроен:\n%s", b)
+	}
+	at := time.Date(2026, 11, 17, 10, 0, 5, 0, time.Local)
+	s.TGBot = func() tgbot.Status {
+		return tgbot.Status{Configured: true, Bot: "@Status_PMK_bot", Users: 2, Pushed: at, Bytes: 1234,
+			Err: "«Табло» для 222: Bad Request: chat not found", ErrAt: at}
+	}
+	b = tgDo(s.Handler(), "GET", "/telegram", nil, false).Body.String()
+	for _, want := range []string{"@Status_PMK_bot", "получателей: 2", "обновлено 10:00:05", "1234 символов", "chat not found"} {
+		if !strings.Contains(b, want) {
+			t.Errorf("нет «%s»", want)
+		}
+	}
+}
