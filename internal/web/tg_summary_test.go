@@ -132,6 +132,13 @@ func TestTGSummary(t *testing.T) {
 	if m.Shift == nil || m.Shift.Name != "А" || m.Shift.From != "08:00" || fmtShares(m.Shift.Shares) != want {
 		t.Errorf("смена: %+v\nждали %s", m.Shift, want)
 	}
+	// Аварии за смену для карточки станка: новые сверху, у идущей — «active» и минуты до «сейчас»
+	if got := mustJSON(m.Log); got != `[{"at":"09:58","text":"Дверь открыта","min":2,"active":true},{"at":"08:30","text":"Перегрев масла","min":15}]` {
+		t.Errorf("аварии за смену: %s", got)
+	}
+	if m.Shift.Min != 120 {
+		t.Errorf("минут смены: %d", m.Shift.Min)
+	}
 	if len(m.Signals) != 2 || *m.Signals[0].Value != 182.44 || *m.Signals[0].Min != 170 || *m.Signals[0].Max != 190 ||
 		m.Signals[1].Text != "12 · Зажим закрыт" || m.Signals[1].Value != nil {
 		t.Errorf("сигналы: %s", mustJSON(m.Signals))
@@ -163,7 +170,7 @@ func TestTGSummaryNothingExtra(t *testing.T) {
 	sum, _ := s.tgSummary(ctx, now)
 	b := mustJSON(sum)
 	for _, bad := range []string{"192.168", "DB103", "DBW", "DBD", ".pla", root, filepath.ToSlash(root),
-		"Пресс", "Температура", "Мало смазки", "Перегрев", `"Signal"`, "ip", "addr", "path"} {
+		"Пресс", "Температура", "Мало смазки", `"Signal"`, "ip", "addr", "path"} {
 		if strings.Contains(b, bad) {
 			t.Errorf("в сводке есть «%s»:\n%s", bad, b)
 		}

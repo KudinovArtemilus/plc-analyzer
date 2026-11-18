@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -299,5 +300,32 @@ func TestReport(t *testing.T) {
 	<-done
 	if len(f.sent) != 1 || f.sent[0]["text"] != "📋 Итог: смена А" || f.sent[0]["disable_notification"] != true {
 		t.Errorf("итог: %+v", f.sent)
+	}
+}
+
+// Аварии за смену не помещаются — у станков остаётся меньше последних аварий, ссылка всё равно есть
+func TestLinkCutsLog(t *testing.T) {
+	var ms []summary.Machine
+	for i := 0; i < 6; i++ {
+		m := summary.Machine{Name: fmt.Sprintf("Станок %d", i), Online: true}
+		for k := 0; k < summary.LogMax; k++ {
+			m.Log = append(m.Log, summary.Logged{At: "09:14", Text: "Зажим: давление ниже нормы, проверьте гидростанцию", Min: k})
+		}
+		ms = append(ms, m)
+	}
+	sum := summary.Summary{At: demo.At, Period: 60, Areas: []summary.Area{{Name: "Участок", Machines: ms}}}
+	link, err := Link("https://example.github.io/tg/", sum)
+	if err != nil || len(link) > MaxLink {
+		t.Fatalf("ссылка: %d %v", len(link), err)
+	}
+	raw, _ := base64.RawURLEncoding.DecodeString(strings.SplitN(link, "#d=", 2)[1])
+	var back summary.Summary
+	json.Unmarshal(raw, &back)
+	n := len(back.Areas[0].Machines[0].Log)
+	if n == 0 || n >= summary.LogMax {
+		t.Errorf("аварий у станка осталось %d", n)
+	}
+	if len(sum.Areas[0].Machines[0].Log) != summary.LogMax {
+		t.Error("исходная сводка испорчена — резать надо копию")
 	}
 }

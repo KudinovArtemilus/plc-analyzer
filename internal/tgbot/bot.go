@@ -319,15 +319,37 @@ func (b *Bot) poll(ctx context.Context, cfg Config, offset int, wait time.Durati
 
 // Link — адрес табло со сводкой после #: base64url от JSON (только латиница, цифры, - и _)
 func Link(page string, sum summary.Summary) (string, error) {
-	raw, err := json.Marshal(sum)
-	if err != nil {
-		return "", err
+	// Аварии за смену — самое длинное в сводке. Не помещается — оставляем у каждого станка
+	// меньше последних аварий (10 → 5 → 3 → 1 → 0); остальное табло показывает целиком.
+	var link string
+	for _, keep := range []int{summary.LogMax, 5, 3, 1, 0} {
+		raw, err := json.Marshal(cutLog(sum, keep))
+		if err != nil {
+			return "", err
+		}
+		link = strings.TrimRight(page, "#") + "#d=" + base64.RawURLEncoding.EncodeToString(raw)
+		if len(link) <= MaxLink {
+			return link, nil
+		}
 	}
-	link := strings.TrimRight(page, "#") + "#d=" + base64.RawURLEncoding.EncodeToString(raw)
-	if len(link) > MaxLink {
-		return "", fmt.Errorf("сводка не помещается в ссылку «Табло»: %d символов из %d — уберите сигналы или станки", len(link), MaxLink)
+	return "", fmt.Errorf("сводка не помещается в ссылку «Табло»: %d символов из %d — уберите сигналы или станки", len(link), MaxLink)
+}
+
+// cutLog — копия сводки, где у каждого станка не больше keep аварий за смену (новые остаются)
+func cutLog(sum summary.Summary, keep int) summary.Summary {
+	out := sum
+	out.Areas = make([]summary.Area, len(sum.Areas))
+	for i, a := range sum.Areas {
+		out.Areas[i] = a
+		out.Areas[i].Machines = make([]summary.Machine, len(a.Machines))
+		for j, m := range a.Machines {
+			if len(m.Log) > keep {
+				m.Log = m.Log[:keep]
+			}
+			out.Areas[i].Machines[j] = m
+		}
 	}
-	return link, nil
+	return out
 }
 
 // call — метод Bot API. Токен — только в адресе запроса; в текст ошибок он не попадает.

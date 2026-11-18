@@ -16,28 +16,59 @@
             --text: var(--tg-theme-text-color, #1d2228);
             --hint: var(--tg-theme-hint-color, #7d8590);
             --card: var(--tg-theme-secondary-bg-color, #f2f3f5);
+            --link: var(--tg-theme-link-color, #2F4A68);
+            --alarm: #B00000;
         }
         * { box-sizing: border-box; }
         body { font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 12px 14px 24px;
-               background: var(--bg); color: var(--text); }
-        header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+               background: var(--bg); color: var(--text); -webkit-tap-highlight-color: transparent; }
+        header { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 6px; }
         h1 { font-size: 19px; margin: 0; }
         .hint { color: var(--hint); font-size: 13px; }
+        .back { background: none; border: 0; color: var(--link); font: inherit; padding: 0 0 8px; cursor: pointer; }
         .stale { background: #f9a82522; border-left: 3px solid #f9a825; padding: 8px 10px; border-radius: 6px; margin: 8px 0; }
-        h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--hint); margin: 18px 0 6px; }
+        h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--hint); margin: 18px 0 6px;
+             display: flex; justify-content: space-between; gap: 8px; }
+        h2 span { text-transform: none; letter-spacing: 0; }
         .card { background: var(--card); border-radius: 10px; padding: 10px 12px; margin: 8px 0;
-                border-left: 5px solid var(--c, #8a8f96); }
+                border-left: 5px solid var(--c, #8a8f96); cursor: pointer; }
+        .card.alarm { background: var(--alarm); border-left-color: var(--alarm); color: #fff; }
+        .card.alarm .hint, .card.alarm .legend { color: #ffffffcc; }
         .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
         .name { font-weight: 600; font-size: 16px; }
         .pill { background: var(--c, #8a8f96); color: #fff; border-radius: 999px; padding: 2px 10px; font-size: 13px;
                 white-space: nowrap; }
+        .card.alarm .pill { background: #fff; color: var(--alarm); }
+        .chev { color: var(--hint); margin-left: 6px; }
+        .card.alarm .chev { color: #fff; }
         .row { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; margin-top: 4px; }
-        .row .v { font-variant-numeric: tabular-nums; text-align: right; }
+        .v { font-variant-numeric: tabular-nums; text-align: right; }
         .bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: #8882; margin: 8px 0 4px; }
+        .card.alarm .bar { background: #ffffff44; }
         .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--hint); }
-        .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; }
-        .alarm { color: #c62828; font-size: 14px; margin-top: 4px; }
+        i.sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; }
+        .card.alarm i.sw { outline: 1px solid #fff8; }
+        .alarmline { font-size: 14px; margin-top: 6px; font-weight: 600; }
         .empty { color: var(--hint); margin-top: 40px; text-align: center; }
+
+        /* Карточка станка */
+        .now { border-radius: 12px; padding: 14px; margin: 6px 0 14px; background: var(--card);
+               border-left: 6px solid var(--c, #8a8f96); }
+        .now.alarm { background: var(--alarm); border-left-color: var(--alarm); color: #fff; }
+        .now .big { font-size: 24px; font-weight: 700; }
+        .now .hint { margin-top: 2px; }
+        .now.alarm .hint { color: #ffffffd9; }
+        h3 { font-size: 14px; margin: 16px 0 6px; display: flex; justify-content: space-between; gap: 8px; }
+        h3 .hint { font-weight: 400; }
+        .list { background: var(--card); border-radius: 10px; padding: 2px 12px; }
+        .item { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 8px 0;
+                border-bottom: 1px solid #8882; }
+        .item:last-child { border-bottom: 0; }
+        .item .main { font-size: 15px; }
+        .item .sub { color: var(--hint); font-size: 12px; }
+        .item .num { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .item.active .main, .item.active .when { color: var(--alarm); font-weight: 600; }
+        .when { font-variant-numeric: tabular-nums; color: var(--hint); font-size: 13px; min-width: 42px; }
     </style>
 </head>
 
@@ -49,13 +80,17 @@
 
         // Цвета — как на странице «Telegram» анализатора (ISA-101: красный — только авария)
         const COLORS = { blue: '#2F4A68', steel: '#9AA6B2', green: '#3F7D4E', orange: '#C2671B', purple: '#6B4E9B',
-                         red: '#C62828', gray: '#8A8F96' };
+                         red: '#B00000', gray: '#8A8F96' };
         const color = c => COLORS[c] || COLORS.gray;
 
         // el('div', {class: 'x'}, 'текст', child…) — без innerHTML: текст из сводки не станет разметкой
         function el(tag, attrs, ...kids) {
             const e = document.createElement(tag);
-            for (const [k, v] of Object.entries(attrs || {})) k === 'style' ? e.style.cssText = v : e.setAttribute(k, v);
+            for (const [k, v] of Object.entries(attrs || {})) {
+                if (k === 'style') e.style.cssText = v;
+                else if (k === 'onclick') e.onclick = v;
+                else e.setAttribute(k, v);
+            }
             for (const k of kids) if (k != null && k !== false) e.append(k);
             return e;
         }
@@ -72,60 +107,144 @@
         }
 
         const fmt = x => String(x).replace('.', ',');
+        const dur = m => m < 1 ? 'меньше минуты' : m < 60 ? `${m} мин` : `${Math.floor(m / 60)} ч` + (m % 60 ? ` ${m % 60} мин` : '');
+        const isAlarm = m => m.state && m.state.color === 'red';
+        const stateOf = m => m.state || (!m.online ? { name: 'Нет связи', color: 'gray' } : null);
 
-        function machineCard(m) {
-            const st = m.state;
-            const card = el('div', { class: 'card', style: '--c:' + color(st ? st.color : 'gray') },
-                el('div', { class: 'top' },
-                    el('span', { class: 'name' }, m.name),
-                    st ? el('span', { class: 'pill' }, st.name) : (!m.online ? el('span', { class: 'pill' }, 'Нет связи') : null)));
-            if (m.step) card.append(el('div', { class: 'row' }, el('span', { class: 'hint' }, 'Шаг'), el('span', { class: 'v' }, m.step)));
-            if (m.shift && m.shift.shares && m.shift.shares.length) {
-                const bar = el('div', { class: 'bar' });
-                const legend = el('div', { class: 'legend' });
-                for (const s of m.shift.shares) {
-                    if (s.pct > 0) bar.append(el('span', { style: `width:${s.pct}%;background:${color(s.color)}` }));
-                    legend.append(el('span', {}, el('i', { style: 'background:' + color(s.color) }), `${s.name} ${fmt(s.pct)}%`));
-                }
-                card.append(el('div', { class: 'hint', style: 'margin-top:6px' }, `Смена ${m.shift.name} с ${m.shift.from}`), bar, legend);
-            }
-            for (const g of m.signals || []) {
-                let v = '—';
-                if (g.text) v = g.text;
-                else if (g.value != null) v = fmt(g.value) + (g.min != null ? `  (${fmt(g.min)}…${fmt(g.max)})` : '');
-                card.append(el('div', { class: 'row' }, el('span', {}, g.label), el('span', { class: 'v' }, v)));
-            }
-            for (const a of m.alarms || []) card.append(el('div', { class: 'alarm' }, `■ ${a.text} — с ${a.since}`));
-            return card;
-        }
+        const S = readSummary();
+        const app = document.getElementById('app');
 
-        function render() {
-            const app = document.getElementById('app');
-            const s = readSummary();
-            if (!s || s.error) {
-                app.append(el('div', { class: 'empty' }, s ? 'Сводка в ссылке испорчена.' :
-                    'Откройте табло кнопкой «Табло» в чате с ботом анализатора.'));
-                return;
-            }
-            const at = new Date(s.at);
+        // ---------- Список станков ----------
+        function list() {
+            app.replaceChildren();
+            if (tg) tg.BackButton.hide();
+            const at = new Date(S.at);
             const age = Math.max(0, Math.round((Date.now() - at) / 60000));
             app.append(el('header', {}, el('h1', {}, 'Станки'),
                 el('span', { class: 'hint' }, `на ${at.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}` +
                     (age >= 1 ? ` · ${age} мин назад` : ''))));
             // Бот обновляет «Табло» раз в период; сильно старше — анализатор или его связь пропали
-            if (age * 60 > 3 * (s.period || 60) + 60) {
+            if (age * 60 > 3 * (S.period || 60) + 60) {
                 app.append(el('div', { class: 'stale' }, `Данные старые: ${age} мин. Анализатор не обновлял табло — ` +
                     'возможно, он выключен или нет интернета. Закройте и откройте «Табло» ещё раз.'));
             }
-            if (!s.areas || !s.areas.length) app.append(el('div', { class: 'empty' }, 'Ни один станок не отмечен для показа.'));
-            for (const a of s.areas || []) {
-                app.append(el('h2', {}, a.name));
-                for (const m of a.machines || []) app.append(machineCard(m));
+            if (!S.areas || !S.areas.length) app.append(el('div', { class: 'empty' }, 'Ни один станок не отмечен для показа.'));
+            for (const a of S.areas || []) {
+                const ms = a.machines || [];
+                const nAlarm = ms.filter(isAlarm).length, nOff = ms.filter(m => !m.online).length;
+                const sum = [`${ms.length} ${plural(ms.length, 'станок', 'станка', 'станков')}`];
+                if (nAlarm) sum.push(`${nAlarm} в аварии`);
+                if (nOff) sum.push(`${nOff} без связи`);
+                app.append(el('h2', {}, a.name, el('span', {}, sum.join(' · '))));
+                for (const m of ms) app.append(card(m));
             }
             app.append(el('p', { class: 'hint', style: 'margin-top:18px' },
-                'PLC Analyzer · © 2026 Артём Кудинов. Данные пришли в самой ссылке — сайт их не видит и не хранит.'));
+                'Нажмите на станок — подробно. PLC Analyzer · © 2026 Артём Кудинов. Данные пришли в самой ссылке — сайт их не видит и не хранит.'));
+            window.scrollTo(0, 0);
         }
-        render();
+
+        function plural(n, one, few, many) {
+            const d = n % 10, h = n % 100;
+            return d === 1 && h !== 11 ? one : d >= 2 && d <= 4 && (h < 12 || h > 14) ? few : many;
+        }
+
+        function card(m) {
+            const st = stateOf(m);
+            const c = el('div', { class: 'card' + (isAlarm(m) ? ' alarm' : ''), style: '--c:' + color(st ? st.color : 'gray'),
+                                  onclick: () => detail(m) },
+                el('div', { class: 'top' },
+                    el('span', { class: 'name' }, m.name),
+                    el('span', {}, st ? el('span', { class: 'pill' }, st.name) : null, el('span', { class: 'chev' }, '›'))));
+            if (m.step) c.append(el('div', { class: 'row' }, el('span', { class: 'hint' }, 'Шаг'), el('span', { class: 'v' }, m.step)));
+            const act = (m.log || []).find(x => x.active) || (m.alarms || [])[0];
+            if (act) c.append(el('div', { class: 'alarmline' }, '■ ' + act.text + (act.min != null ? ` · ${dur(act.min)}` : ` · с ${act.since}`)));
+            if (m.shift && m.shift.shares && m.shift.shares.length) {
+                // На красной карточке доля «Авария» — белым, иначе красное на красном не видно
+                const onRed = isAlarm(m), col = c => onRed && c === 'red' ? '#ffffff' : color(c);
+                c.append(bar(m.shift.shares, col));
+                const legend = el('div', { class: 'legend' });
+                for (const s of m.shift.shares) legend.append(el('span', {}, el('i', { class: 'sw', style: 'background:' + col(s.color) }), `${s.name} ${fmt(s.pct)}%`));
+                c.append(legend);
+            }
+            return c;
+        }
+
+        function bar(shares, col = color) {
+            const b = el('div', { class: 'bar' });
+            for (const s of shares) if (s.pct > 0) b.append(el('span', { style: `width:${s.pct}%;background:${col(s.color)}` }));
+            return b;
+        }
+
+        // ---------- Карточка станка ----------
+        function detail(m) {
+            app.replaceChildren();
+            if (tg) { tg.BackButton.show(); }
+            else app.append(el('button', { class: 'back', onclick: list }, '‹ Назад'));
+            const st = stateOf(m);
+            app.append(el('header', {}, el('h1', {}, m.name),
+                el('span', { class: 'hint' }, `на ${new Date(S.at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`)));
+
+            // Сейчас
+            app.append(el('div', { class: 'now' + (isAlarm(m) ? ' alarm' : ''), style: '--c:' + color(st ? st.color : 'gray') },
+                el('div', { class: 'hint' }, 'Сейчас'),
+                el('div', { class: 'big' }, st ? st.name : '—'),
+                m.step ? el('div', { class: 'hint' }, 'шаг ' + m.step) : null));
+
+            // Смена: проценты и время
+            if (m.shift && m.shift.shares && m.shift.shares.length) {
+                app.append(el('h3', {}, `Смена ${m.shift.name} с ${m.shift.from}`, el('span', { class: 'hint' }, m.shift.min != null ? dur(m.shift.min) : '')));
+                app.append(bar(m.shift.shares));
+                const l = el('div', { class: 'list' });
+                for (const s of m.shift.shares) {
+                    l.append(el('div', { class: 'item' },
+                        el('span', { class: 'main' }, el('i', { class: 'sw', style: 'background:' + color(s.color) }), s.name),
+                        el('span', {}, el('span', { class: 'num' }, fmt(s.pct) + ' %'), el('span', { class: 'sub' }, '  ' + dur(s.min)))));
+                }
+                app.append(l);
+            }
+
+            // Сигналы: значение крупно, под ним — мин … макс за период
+            if (m.signals && m.signals.length) {
+                const per = (S.period || 60) === 60 ? 'за минуту' : `за ${Math.round((S.period || 60) / 60)} мин`;
+                app.append(el('h3', {}, 'Сигналы'));
+                const l = el('div', { class: 'list' });
+                for (const g of m.signals) {
+                    let v = '—', sub = '';
+                    if (g.text) v = g.text;
+                    else if (g.value != null) v = fmt(g.value);
+                    if (g.min != null) sub = `${per}: ${fmt(g.min)} … ${fmt(g.max)}`;
+                    l.append(el('div', { class: 'item' },
+                        el('span', {}, el('div', { class: 'main' }, g.label), sub ? el('div', { class: 'sub' }, sub) : null),
+                        el('span', { class: 'num' }, v)));
+                }
+                app.append(l);
+            }
+
+            // Аварии за смену (а если журнала нет — хотя бы активные)
+            const log = m.log || [];
+            if (log.length || (m.alarms && m.alarms.length)) {
+                app.append(el('h3', {}, 'Аварии за смену', el('span', { class: 'hint' }, log.length ? `последние ${log.length}` : '')));
+                const l = el('div', { class: 'list' });
+                const rows = log.length ? log : m.alarms.map(a => ({ at: a.since, text: a.text, active: true }));
+                for (const a of rows) {
+                    l.append(el('div', { class: 'item' + (a.active ? ' active' : '') },
+                        el('span', { class: 'when' }, a.at),
+                        el('span', { class: 'main', style: 'flex:1' }, a.text),
+                        el('span', { class: 'sub' }, a.min == null ? 'идёт' : a.active ? `идёт ${dur(a.min)}` : dur(a.min))));
+                }
+                app.append(l);
+            } else if (m.shift) {
+                app.append(el('h3', {}, 'Аварии за смену', el('span', { class: 'hint' }, 'не было')));
+            }
+            window.scrollTo(0, 0);
+        }
+
+        if (tg) tg.BackButton.onClick(list);
+
+        if (!S || S.error) {
+            app.append(el('div', { class: 'empty' }, S ? 'Сводка в ссылке испорчена.' :
+                'Откройте табло кнопкой «Табло» в чате с ботом анализатора.'));
+        } else list();
     </script>
 </body>
 

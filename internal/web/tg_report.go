@@ -155,16 +155,9 @@ func (s *Server) tgMachineReport(ctx context.Context, pl store.PLC, m store.TGMa
 // перекрывающиеся — один раз.
 func (s *Server) tgShiftAlarms(ctx context.Context, plcID int64, sh archive.Shift) (string, error) {
 	from, to := sh.Start(), sh.End()
-	all, err := s.Store.Events(ctx, store.EventFilter{PLCID: plcID, From: from.Add(-24 * time.Hour), To: to,
-		Kind: store.KindAlarm, Limit: 100000})
+	evs, err := s.tgShiftEvents(ctx, plcID, from, to)
 	if err != nil {
 		return "", err
-	}
-	var evs []store.Event
-	for _, e := range all {
-		if e.Went.IsZero() || e.Went.After(from) { // ушедшие до начала смены — не её
-			evs = append(evs, e)
-		}
 	}
 	if len(evs) == 0 {
 		return "аварий не было", nil

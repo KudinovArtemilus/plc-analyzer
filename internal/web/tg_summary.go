@@ -166,6 +166,11 @@ func (s *Server) tgMachineSummary(ctx context.Context, pl store.PLC, m store.TGM
 	}
 	if m.Show.Alarms {
 		mc.Alarms = alarms
+		evs, err := s.tgShiftEvents(ctx, pl.ID, archive.ShiftOf(now).Start(), now)
+		if err != nil {
+			return mc, err
+		}
+		mc.Log = tgLog(evs, now)
 	}
 	return mc, nil
 }
@@ -297,6 +302,7 @@ func (s *Server) tgShiftOf(ctx context.Context, pl store.PLC, mode string, rules
 		}
 	}
 	out.Shares = summary.Shares(rules, tl)
+	out.Min = int(now.Sub(sh.Start()).Round(time.Minute) / time.Minute)
 	return out, nil
 }
 
@@ -412,4 +418,37 @@ func (s *Server) tgSummaryJSON(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	json.NewEncoder(w).Encode(sum)
+}
+
+// tgShiftEvents — аварии, которые шли в [from, to): пришедшие в это время и перешедшие из прошлой смены
+func (s *Server) tgShiftEvents(ctx context.Context, plcID int64, from, to time.Time) ([]store.Event, error) {
+	all, err := s.Store.Events(ctx, store.EventFilter{PLCID: plcID, From: from.Add(-24 * time.Hour), To: to,
+		Kind: store.KindAlarm, Limit: 100000})
+	if err != nil {
+		return nil, err
+	}
+	var out []store.Event
+	for _, e := range all {
+		if e.Went.IsZero() || e.Went.After(from) { // ушедшие до начала — не этой смены
+			out = append(out, e)
+		}
+	}
+	return out, nil // новые сверху (так отдаёт Events)
+}
+
+// tgLog — аварии за смену для карточки станка: новые сверху, не больше summary.LogMax
+func tgLog(evs []store.Event, now time.Time) []summary.Logged {
+	var out []summary.Logged
+	for _, e := range evs {
+		if len(out) == summary.LogMax {
+			break
+		}
+		end := e.Went
+		if e.Active() {
+			end = now
+		}
+		out = append(out, summary.Logged{At: e.Came.Local().Format("15:04"), Text: e.Message,
+			Min: int(end.Sub(e.Came).Round(time.Minute) / time.Minute), Active: e.Active()})
+	}
+	return out
 }

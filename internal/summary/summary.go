@@ -41,7 +41,19 @@ type Machine struct {
 	Shift   *Shift   `json:"shift,omitempty"`
 	Signals []Signal `json:"signals,omitempty"`
 	Alarms  []Alarm  `json:"alarms,omitempty"`
+	Log     []Logged `json:"log,omitempty"` // аварии за смену, новые сверху (для карточки станка, 45c)
 }
+
+// Logged — авария за смену: когда пришла, текст, сколько длилась (идёт — до «сейчас»)
+type Logged struct {
+	At     string `json:"at"` // «09:14»
+	Text   string `json:"text"`
+	Min    int    `json:"min"`
+	Active bool   `json:"active,omitempty"`
+}
+
+// LogMax — сколько аварий за смену класть в сводку: она едет в ссылке «Табло» (до 8000 символов)
+const LogMax = 10
 
 // State — состояние сейчас: название и цвет (ключ из store.TGColors, red — авария, gray — нет связи)
 type State struct {
@@ -53,6 +65,7 @@ type State struct {
 type Shift struct {
 	Name   string  `json:"name"` // «А» / «Б»
 	From   string  `json:"from"` // «08:00»
+	Min    int     `json:"min"`  // сколько минут смены прошло
 	Shares []Share `json:"shares"`
 }
 
