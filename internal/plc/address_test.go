@@ -12,12 +12,12 @@ func TestParseAddress(t *testing.T) {
 		{"db11.dbd100", Address{DB: 11, Byte: 100, Kind: 'D'}, false},
 		{" DB3000.DBX4.3 ", Address{DB: 3000, Byte: 4, Bit: 3, Kind: 'X'}, false},
 		{"DB1.DBB0", Address{DB: 1, Byte: 0, Kind: 'B'}, false},
-		{"DB11.DBX4", Address{}, true},     // нет номера бита
-		{"DB11.DBX4.8", Address{}, true},   // бит больше 7
-		{"DB11.DBW90.1", Address{}, true},  // бит у слова
-		{"DB11DBW90", Address{}, true},     // нет точки
-		{"DB0.DBW2", Address{}, true},      // DB0 не бывает
-		{"M10.0", Address{}, true},         // пока только DB
+		{"DB11.DBX4", Address{}, true},    // нет номера бита
+		{"DB11.DBX4.8", Address{}, true},  // бит больше 7
+		{"DB11.DBW90.1", Address{}, true}, // бит у слова
+		{"DB11DBW90", Address{}, true},    // нет точки
+		{"DB0.DBW2", Address{}, true},     // DB0 не бывает
+		{"M10.0", Address{}, true},        // пока только DB
 		{"", Address{}, true},
 	}
 

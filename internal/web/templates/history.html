@@ -12,6 +12,7 @@
 <body>
   <nav><a href="/?plc={{.PLC.ID}}">← Графики</a> <a href="/plcs">ПЛК</a> <a href="/signals?plc={{.PLC.ID}}">Сигналы</a>
     <b>История</b> <a href="/snapshots?plc={{.PLC.ID}}">Слепки</a> <a href="/events?plc={{.PLC.ID}}">События</a>
+    <a href="/logout" class="logout" title="выйти: в следующий раз — снова пароль">выйти</a>
   </nav>
   <h3>История ПЛК
     <select onchange="location.href='/history?plc=' + this.value">
